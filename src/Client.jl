@@ -413,6 +413,8 @@ function disconnect!(client::WSClient)
     end
 
     client.ws = nothing
+    
+    @info "WebSocket 连接已关闭" session_id=client.session_id
 end
 
 """
@@ -642,7 +644,7 @@ function start_message_loop(client::WSClient)
                 if e isa InterruptException
                     @info "消息循环被中断"
                 elseif e isa EOFError
-                    @info "WebSocket 连接正常关闭" session_id=client.session_id
+                    # 连接已被对方正常关闭，执行清理
                     disconnect!(client)
                 else
                     @error "消息循环异常" exception=(e, catch_backtrace())

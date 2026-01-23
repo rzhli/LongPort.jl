@@ -112,8 +112,8 @@ end
 =#
 
 ### 获取标的K线     （DataFrame）
-# 获取 700.HK 的盘中 K 线
-candlesticks_data = candlesticks(ctx, "700.HK", CandlePeriod.SIXTY_MINUTE, 365; adjust_type = AdjustType.NO_ADJUST)
+# 获取 "688041.SH" 的盘中 K 线
+candlesticks_data = candlesticks(ctx, "688041.SH", CandlePeriod.DAY, 65; adjust_type = AdjustType.NO_ADJUST)
 # 获取 700.HK 的所有 K 线  （TradeSession.All数字代码未知）
 candlesticks_data = candlesticks(ctx, "700.HK", CandlePeriod.DAY, 1000; adjust_type = AdjustType.FORWARD_ADJUST, trade_sessions = TradeSession.All)
 candlesticks_data = candlesticks(ctx, "700.HK", CandlePeriod.DAY, 100; trade_sessions = TradeSession.Intraday)

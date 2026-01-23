@@ -396,7 +396,8 @@ function candlesticks(
             high = c.high,
             volume = c.volume,
             turnover = c.turnover,
-            timestamp = to_china_time(c.timestamp)
+            timestamp = unix2datetime(c.timestamp),
+            trade_session = c.trade_session
         )
     end
     return DataFrame(data)
@@ -416,7 +417,7 @@ function history_candlesticks_by_offset(
 
     req = SecurityHistoryCandlestickRequest(symbol, period, adjust_type, HistoryCandlestickQueryType.QUERY_BY_OFFSET, offset_request, nothing, trade_sessions)
     cmd = GenericRequestCmd(QuoteCommand.QueryHistoryCandlestick, req, SecurityCandlestickResponse, Channel(1))
-    resp = request(ctx, cmd)
+    @show resp = request(ctx, cmd)
 
     data = map(resp.candlesticks) do c
         (
@@ -427,7 +428,8 @@ function history_candlesticks_by_offset(
             high = c.high,
             volume = c.volume,
             turnover = c.turnover,
-            timestamp = to_china_time(c.timestamp)
+            timestamp = unix2datetime(c.timestamp),
+            trade_session = c.trade_session
         )
     end
     return DataFrame(data)
@@ -456,7 +458,8 @@ function history_candlesticks_by_date(
             high = c.high,
             volume = c.volume,
             turnover = c.turnover,
-            timestamp = to_china_time(c.timestamp)
+            timestamp = unix2datetime(c.timestamp),
+            trade_session = c.trade_session
         )
     end
     return DataFrame(data)
