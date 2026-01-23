@@ -85,7 +85,7 @@ function get(config::Config.config, path::String; params::Dict{String,Any} = Dic
     try
         # 构建请求URL
         base_url = config.http_url
-        query_parts = []
+        query_parts = String[]
         for (k, v) in params
             if v isa Vector
                 for val in v
@@ -243,7 +243,7 @@ end
 function delete(config::Config.config, path::String; params::Dict{String,Any} = Dict{String,Any}())
     try
         base_url = config.http_url
-        query_parts = []
+        query_parts = String[]
         for (k, v) in params
             if v isa Vector
                 for val in v
