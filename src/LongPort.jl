@@ -63,35 +63,9 @@ module LongPort
            
            # Trade module
     export TradeContext, history_executions, today_executions, estimate_max_purchase_quantity,
-           history_orders, order_detail, replace_order, submit_order, today_orders, cancel_order, 
+           history_orders, order_detail, replace_order, submit_order, today_orders, cancel_order,
            set_on_order_changed, cash_flow, stock_positions, fund_positions, margin_ratio, account_balance
-    
+
     const VERSION = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))["version"]
 
-    function __init__()
-        @info "LongPort Julia SDK loaded (v$VERSION)"
-    end
-
-    function disconnect!(ctx::QuoteContext)
-        inner = ctx.inner
-        if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
-            put!(inner.command_ch, Quote.DisconnectCmd())
-            close(inner.command_ch)
-    
-            wait(inner.core_task)
-    
-            if !isnothing(inner.push_dispatcher_task) && !istaskdone(inner.push_dispatcher_task)
-                wait(inner.push_dispatcher_task)
-            end
-        end
-    end
-
-    function disconnect!(ctx::TradeContext)
-        inner = ctx.inner
-        if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
-            put!(inner.command_ch, Trade.DisconnectCmd())
-            close(inner.command_ch)
-            wait(inner.core_task)
-        end
-    end
 end # module LongPort

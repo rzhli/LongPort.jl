@@ -862,4 +862,18 @@ function security_list(ctx::QuoteContext, market::Market.T, category::SecurityLi
     return DataFrame(to_namedtuple(resp.data.list))
 end
 
+function disconnect!(ctx::QuoteContext)
+    inner = ctx.inner
+    if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
+        put!(inner.command_ch, DisconnectCmd())
+        close(inner.command_ch)
+
+        wait(inner.core_task)
+
+        if !isnothing(inner.push_dispatcher_task) && !istaskdone(inner.push_dispatcher_task)
+            wait(inner.push_dispatcher_task)
+        end
+    end
+end
+
 end # module Quote

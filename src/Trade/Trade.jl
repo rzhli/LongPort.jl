@@ -519,4 +519,13 @@ end
             @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
         end
     end
+
+    function disconnect!(ctx::TradeContext)
+        inner = ctx.inner
+        if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
+            put!(inner.command_ch, DisconnectCmd())
+            close(inner.command_ch)
+            wait(inner.core_task)
+        end
+    end
 end # module Trade
