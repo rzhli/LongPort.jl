@@ -632,7 +632,7 @@ function trading_session(ctx::QuoteContext)
 
         format_time(t::Int64) = lpad(string(t), 4, '0') |> s -> "$(s[1:2]):$(s[3:4])"
 
-        rows = []
+        rows = NamedTuple{(:market, :beg_time, :end_time, :trade_session), Tuple{String, String, String, Any}}[]
         for market_session in to_namedtuple(resp.market_trade_session)
             for session in market_session.trade_session
                 push!(rows, (
@@ -682,7 +682,7 @@ function capital_distribution(ctx::QuoteContext, symbol::String)
     resp = request(ctx, cmd)
     nt = to_namedtuple(resp)
 
-    rows = []
+    rows = NamedTuple{(:symbol, :timestamp, :flow_type, :capital_size, :value), Tuple{String, DateTime, String, String, Float64}}[]
     if isdefined(nt, :capital_in) && !isnothing(nt.capital_in)
         for (size, value) in pairs(nt.capital_in)
             push!(rows, (

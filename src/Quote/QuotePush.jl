@@ -19,24 +19,24 @@ module QuotePush
     """
     Push event containing symbol and event details
     """
-    struct PushEvent
+    struct PushEvent{T}
         symbol::String
         detail_type::PushEventDetail
-        data::Any
+        data::T
     end
 
     """
     Callback functions structure - matching Python SDK Callbacks
+    Note: Using Union{Function, Nothing} is acceptable here since callbacks are
+    set once and called via invokelatest, containing any type instability.
     """
     mutable struct Callbacks
         realtime_quote::Union{Function, Nothing}
         depth::Union{Function, Nothing}
         brokers::Union{Function, Nothing}
         trades::Union{Function, Nothing}
-        
-        function Callbacks()
-            new(nothing, nothing, nothing, nothing)
-        end
+
+        Callbacks() = new(nothing, nothing, nothing, nothing)
     end
 
     """
