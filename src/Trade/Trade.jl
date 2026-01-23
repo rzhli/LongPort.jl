@@ -12,7 +12,7 @@ module Trade
     using ..Utils: Arc, to_china_time, safeparse
 
     # --- Public API ---
-    export TradeContext, disconnect!, subscribe, unsubscribe, history_executions, today_executions,
+    export TradeContext, subscribe, unsubscribe, history_executions, today_executions,
            history_orders, today_orders, replace_order, submit_order, cancel_order, account_balance,
            cash_flow, fund_positions, stock_positions, margin_ratio, order_detail, estimate_max_purchase_quantity,
            set_on_order_changed
@@ -520,7 +520,7 @@ end
         end
     end
 
-    function disconnect!(ctx::TradeContext)
+    function LongPort.disconnect!(ctx::TradeContext)
         inner = ctx.inner
         if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
             put!(inner.command_ch, DisconnectCmd())

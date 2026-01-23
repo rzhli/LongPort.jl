@@ -2,6 +2,13 @@ __precompile__()
 module LongPort
 
     using TOML, Dates
+
+    # Version
+    const VERSION = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))["version"]
+
+    # Forward declaration for multi-dispatch across modules
+    function disconnect! end
+
     # Core Modules
     include("Core/Constant.jl")
     include("Core/Errors.jl")
@@ -31,41 +38,70 @@ module LongPort
     using .QuotePush
     using .Quote
 
-    export Quote, Trade, Config, disconnect!
-    
-           # Config 模块    Constant 模块    
-    export config, Market, Currency 
-           
-           # QuoteProtocol模块
-    export PushQuote, PushDepth, PushBrokers, PushTrade,                     # 结构体类型Struct
-           SubType, CandlePeriod, AdjustType, Direction, WarrantSortBy, SortOrderType,     # 枚举类型Enums
-           TradeSession, Granularity, SecuritiesUpdateMode, SecurityListCategory
+    #= ==================== Exports ==================== =#
 
-           # Quote 模块
-    export QuoteContext, subscriptions, realtime_quote,
-           static_info, depth, brokers, trades, candlesticks,                       # 函数
-           history_candlesticks_by_offset, history_candlesticks_by_date,
-           option_chain_expiry_date_list, option_chain_info_by_date,
-           warrant_list, trading_session, trading_days, 
-           set_on_quote, set_on_depth, set_on_brokers, set_on_trades, set_on_candlestick,
-           
-           intraday, option_quote, warrant_quote, participants,
-           option_chain_dates, option_chain_strikes, warrant_issuers, warrant_filter,
-           capital_flow, capital_distribution, calc_indexes, market_temperature,
-           history_market_temperature, member_id, quote_level,
-           watchlist, create_watchlist_group, delete_watchlist_group, update_watchlist_group,  # 自选股
-           security_list
+    # --- Module & Core ---
+    export Quote, Trade, Config,
+           disconnect!,                                     # 断开连接
+           VERSION
 
-           # TradeProtocol 模块       
+    # --- Config ---
+    export config                                           # 配置加载
+
+    # --- Constant (Enums) ---
+    export Market, Currency
+
+    # --- QuoteProtocol (行情协议) ---
+    # Push 结构体
+    export PushQuote, PushDepth, PushBrokers, PushTrade
+    # 枚举类型
+    export SubType, CandlePeriod, AdjustType, Direction,
+           TradeSession, Granularity,
+           WarrantSortBy, SortOrderType,
+           SecuritiesUpdateMode, SecurityListCategory
+
+    # --- Quote (行情模块) ---
+    # Context
+    export QuoteContext
+    # 订阅管理
+    export subscribe, unsubscribe, subscriptions,
+           set_on_quote, set_on_depth, set_on_brokers, set_on_trades, set_on_candlestick
+    # 实时行情
+    export realtime_quote, static_info, depth, brokers, trades, intraday
+    # K线数据
+    export candlesticks, history_candlesticks_by_offset, history_candlesticks_by_date
+    # 期权
+    export option_quote, option_chain_expiry_date_list, option_chain_info_by_date,
+           option_chain_dates, option_chain_strikes
+    # 窝轮
+    export warrant_quote, warrant_list, warrant_issuers, warrant_filter
+    # 市场信息
+    export trading_session, trading_days, participants, member_id, quote_level, security_list
+    # 资金流
+    export capital_flow, capital_distribution, calc_indexes
+    # 市场温度
+    export market_temperature, history_market_temperature
+    # 自选股
+    export watchlist, create_watchlist_group, delete_watchlist_group, update_watchlist_group
+
+    # --- TradeProtocol (交易协议) ---
+    # Options 结构体
     export GetHistoryExecutionsOptions, GetTodayExecutionsOptions, EstimateMaxPurchaseQuantityOptions,
-           GetHistoryOrdersOptions, ReplaceOrderOptions, SubmitOrderOptions, GetTodayOrdersOptions,   # struct结构体          
-           OrderType, OrderSide, OrderStatus, TimeInForceType, TopicType                              # enum枚举类型
-           
-           # Trade module
-    export TradeContext, history_executions, today_executions, estimate_max_purchase_quantity,
-           history_orders, order_detail, replace_order, submit_order, today_orders, cancel_order,
-           set_on_order_changed, cash_flow, stock_positions, fund_positions, margin_ratio, account_balance
+           GetHistoryOrdersOptions, ReplaceOrderOptions, SubmitOrderOptions, GetTodayOrdersOptions
+    # 枚举类型
+    export OrderType, OrderSide, OrderStatus, TimeInForceType, TopicType
 
-    const VERSION = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))["version"]
+    # --- Trade (交易模块) ---
+    # Context
+    export TradeContext
+    # 订单操作
+    export submit_order, replace_order, cancel_order, order_detail
+    # 订单查询
+    export today_orders, history_orders, today_executions, history_executions
+    # 账户信息
+    export account_balance, cash_flow, stock_positions, fund_positions,
+           margin_ratio, estimate_max_purchase_quantity
+    # 推送
+    export set_on_order_changed
 
 end # module LongPort
