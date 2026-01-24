@@ -194,6 +194,51 @@ set_on_trades(ctx, on_trades_callback)
 Quote.subscribe(ctx, ["700.HK"], [SubType.TRADE]; is_first_push = true)
 Quote.unsubscribe(ctx, ["700.HK"], [SubType.TRADE])
 
+# 实时数据访问（本地缓存）
+# 订阅后，推送数据会自动缓存到本地，可以通过以下方法访问
+
+### 订阅行情数据
+Quote.subscribe(ctx, ["700.HK"], [SubType.QUOTE, SubType.DEPTH, SubType.BROKERS, SubType.TRADE]; is_first_push=true)
+
+# 等待一段时间让数据推送
+sleep(2)
+
+### 获取缓存的盘口数据
+cached_depth = realtime_depth(ctx, "700.HK")
+if !isnothing(cached_depth)
+    println("Cached depth for 700.HK:")
+    println("  Asks: ", length(cached_depth.ask), " levels")
+    println("  Bids: ", length(cached_depth.bid), " levels")
+end
+
+### 获取缓存的经纪队列
+cached_brokers = realtime_brokers(ctx, "700.HK")
+if !isnothing(cached_brokers)
+    println("Cached brokers for 700.HK:")
+    println("  Ask brokers: ", length(cached_brokers.ask_brokers))
+    println("  Bid brokers: ", length(cached_brokers.bid_brokers))
+end
+
+### 获取缓存的成交明细
+cached_trades = realtime_trades(ctx, "700.HK"; count=10)
+println("Cached trades for 700.HK: ", length(cached_trades), " trades")
+
+Quote.unsubscribe(ctx, ["700.HK"], [SubType.QUOTE, SubType.DEPTH, SubType.BROKERS, SubType.TRADE])
+
+# K线订阅
+# 订阅K线数据，获取初始K线并自动缓存后续推送
+
+### 订阅K线并获取初始数据
+initial_candlesticks = subscribe_candlesticks(ctx, "700.HK", CandlePeriod.DAY; count=100)
+println("Initial candlesticks: ", length(initial_candlesticks), " bars")
+
+### 获取缓存的K线数据
+cached_candlesticks = realtime_candlesticks(ctx, "700.HK", CandlePeriod.DAY; count=10)
+println("Cached candlesticks: ", length(cached_candlesticks), " bars")
+
+### 取消K线订阅并清除缓存
+unsubscribe_candlesticks(ctx, "700.HK", CandlePeriod.DAY)
+
 ### 创建自选股分组
 group_id = create_watchlist_group(ctx, "Watchlist1", securities = ["700.HK", "AAPL.US"])
 

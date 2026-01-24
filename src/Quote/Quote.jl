@@ -1,6 +1,7 @@
 module Quote
 
 using ProtoBuf, JSON3, Dates, Logging, DataFrames, HTTP
+using Dates: datetime2unix
 using ..Config, ..QuotePush, ..Client, ..QuoteProtocol, ..ControlProtocol, ..Constant
 
 using ..QuoteProtocol: CandlePeriod, AdjustType, TradeSession, SubType, QuoteCommand, Direction,
@@ -20,8 +21,12 @@ using ..QuoteProtocol: CandlePeriod, AdjustType, TradeSession, SubType, QuoteCom
         SecurityListCategory, SecuritiesUpdateMode
         
 using ..Client: WSClient
-using ..Cache: SimpleCache, CacheWithKey, get_or_update
+using ..Cache: SimpleCache, CacheWithKey, get_or_update, RealtimeStore,
+               update_quote!, update_depth!, update_brokers!, update_trades!,
+               get_quote, get_depth, get_brokers, get_trades, get_candlesticks,
+               update_candlesticks!, clear_candlesticks!
 using ..Utils: to_namedtuple, to_china_time, Arc
+using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
 
 using ..Errors
 
@@ -30,17 +35,20 @@ import ..disconnect!
 export QuoteContext,
        realtime_quote, subscribe, unsubscribe, static_info, depth, intraday,
        brokers, trades, candlesticks,
-       history_candlesticks_by_offset, history_candlesticks_by_date, 
+       history_candlesticks_by_offset, history_candlesticks_by_date,
        option_chain_expiry_date_list, option_chain_info_by_date,
        set_on_quote, set_on_depth, set_on_brokers, set_on_trades, set_on_candlestick,
-       
+
        option_quote, warrant_quote, participants, subscriptions,
        option_chain_dates, option_chain_strikes, warrant_issuers, warrant_list,
        trading_session, trading_days, capital_flow, capital_distribution,
-       calc_indexes, member_id, quote_level, option_chain_expiry_date_list, 
+       calc_indexes, member_id, quote_level, option_chain_expiry_date_list,
        market_temperature, history_market_temperature,
        watchlist, create_watchlist_group, delete_watchlist_group, update_watchlist_group,
-       security_list
+       security_list,
+       # Realtime cache methods
+       realtime_depth, realtime_brokers, realtime_trades, realtime_candlesticks,
+       subscribe_candlesticks, unsubscribe_candlesticks
 
 # --- Command Types for the Core Actor ---
 abstract type AbstractCommand end
@@ -96,6 +104,9 @@ mutable struct InnerQuoteContext
     cache_option_chain_expiry_dates::CacheWithKey{String, Vector{Any}}
     cache_option_chain_strike_info::CacheWithKey{Tuple{String, Any}, Vector{Any}}
     cache_trading_sessions::SimpleCache{DataFrame}
+
+    # Realtime data store for subscribed data
+    store::RealtimeStore{PushQuote, PushDepth, PushBrokers, Trade, Candlestick}
 
     # Info from Core
     member_id::Int64
@@ -248,6 +259,7 @@ end
 
 function dispatch_push_events(ctx::QuoteContext, push_rx::Channel)
     # @info "Push event dispatcher started."
+    store = ctx.inner.store
     for (cmd_code, body) in push_rx
         command = QuoteCommand.T(cmd_code)
         io = IOBuffer(body)
@@ -257,15 +269,19 @@ function dispatch_push_events(ctx::QuoteContext, push_rx::Channel)
         try
             if command == QuoteCommand.PushQuoteData
                 data = ProtoBuf.decode(decoder, QuoteProtocol.PushQuote)
+                update_quote!(store, data.symbol, data)
                 QuotePush.handle_quote(callbacks, data.symbol, data)
             elseif command == QuoteCommand.PushDepthData
                 data = ProtoBuf.decode(decoder, QuoteProtocol.PushDepth)
+                update_depth!(store, data.symbol, data)
                 QuotePush.handle_depth(callbacks, data.symbol, data)
             elseif command == QuoteCommand.PushBrokersData
                 data = ProtoBuf.decode(decoder, QuoteProtocol.PushBrokers)
+                update_brokers!(store, data.symbol, data)
                 QuotePush.handle_brokers(callbacks, data.symbol, data)
             elseif command == QuoteCommand.PushTradeData
                 data = ProtoBuf.decode(decoder, QuoteProtocol.PushTrade)
+                update_trades!(store, data.symbol, data.trade)
                 QuotePush.handle_trades(callbacks, data.symbol, data)
             else
                 # @warn "Unknown push command" cmd=cmd_code
@@ -307,6 +323,8 @@ function QuoteContext(config::Config.config)
         CacheWithKey{String, Vector{Any}}(1800.0),
         CacheWithKey{Tuple{String, Any}, Vector{Any}}(1800.0),
         SimpleCache{DataFrame}(7200.0),
+        # Realtime store
+        RealtimeStore{PushQuote, PushDepth, PushBrokers, Trade, Candlestick}(),
         # Core info
         0, "",
     )
@@ -862,6 +880,109 @@ function security_list(ctx::QuoteContext, market::Market.T, category::SecurityLi
     cmd = HttpGetCmd("/v1/quote/get_security_list", params, Channel(1))
     resp = request(ctx, cmd)
     return DataFrame(to_namedtuple(resp.data.list))
+end
+
+# =============================================================================
+# Realtime Data Access (from local store)
+# =============================================================================
+
+"""
+    realtime_depth(ctx::QuoteContext, symbol::String) -> Union{Nothing, PushDepth}
+
+Get real-time depth data from local cache for a subscribed symbol.
+Returns `nothing` if no data is available (symbol not subscribed or no push received yet).
+"""
+function realtime_depth(ctx::QuoteContext, symbol::String)
+    get_depth(ctx.inner.store, symbol)
+end
+
+"""
+    realtime_brokers(ctx::QuoteContext, symbol::String) -> Union{Nothing, PushBrokers}
+
+Get real-time broker queue data from local cache for a subscribed symbol.
+Returns `nothing` if no data is available.
+"""
+function realtime_brokers(ctx::QuoteContext, symbol::String)
+    get_brokers(ctx.inner.store, symbol)
+end
+
+"""
+    realtime_trades(ctx::QuoteContext, symbol::String; count::Int=0) -> Vector{Trade}
+
+Get real-time trade data from local cache for a subscribed symbol.
+
+# Arguments
+- `symbol::String`: Security symbol
+- `count::Int=0`: Maximum number of trades to return (0 = all available)
+"""
+function realtime_trades(ctx::QuoteContext, symbol::String; count::Int=0)
+    get_trades(ctx.inner.store, symbol; count=count)
+end
+
+"""
+    realtime_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T; count::Int=0) -> Vector{Candlestick}
+
+Get real-time candlestick data from local cache for a subscribed symbol and period.
+
+# Arguments
+- `symbol::String`: Security symbol
+- `period::CandlePeriod.T`: Candlestick period
+- `count::Int=0`: Maximum number of candlesticks to return (0 = all available)
+"""
+function realtime_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T; count::Int=0)
+    get_candlesticks(ctx.inner.store, symbol, Int(period); count=count)
+end
+
+# =============================================================================
+# Candlestick Subscription
+# =============================================================================
+
+"""
+    subscribe_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T; count::Int=1000) -> Vector{Candlestick}
+
+Subscribe to real-time candlestick updates for a symbol and period.
+Returns initial candlestick data after subscribing.
+
+# Arguments
+- `symbol::String`: Security symbol (e.g., "700.HK")
+- `period::CandlePeriod.T`: Candlestick period (e.g., CandlePeriod.DAY)
+- `count::Int=1000`: Number of historical candlesticks to fetch initially
+
+# Returns
+- `Vector{Candlestick}`: Initial candlestick data
+"""
+function subscribe_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T; count::Int=1000)
+    # First subscribe to candlestick push events
+    subscribe(ctx, [symbol], [SubType.QUOTE])  # Need quote subscription for candlestick updates
+
+    # Fetch initial candlesticks
+    initial_data = candlesticks(ctx, symbol, period, Int64(count); adjust_type=AdjustType.NO_ADJUST)
+
+    # Convert DataFrame to Vector{Candlestick} and store
+    candlestick_vec = Candlestick[]
+    if nrow(initial_data) > 0
+        for row in eachrow(initial_data)
+            push!(candlestick_vec, Candlestick(
+                row.close, row.open, row.low, row.high,
+                row.volume, row.turnover,
+                row.timestamp isa DateTime ? Int64(datetime2unix(row.timestamp)) : row.timestamp,
+                TradeSession.Intraday
+            ))
+        end
+    end
+
+    update_candlesticks!(ctx.inner.store, symbol, Int(period), candlestick_vec)
+
+    return candlestick_vec
+end
+
+"""
+    unsubscribe_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T)
+
+Unsubscribe from real-time candlestick updates and clear cached data.
+"""
+function unsubscribe_candlesticks(ctx::QuoteContext, symbol::String, period::CandlePeriod.T)
+    clear_candlesticks!(ctx.inner.store, symbol, Int(period))
 end
 
 function disconnect!(ctx::QuoteContext)

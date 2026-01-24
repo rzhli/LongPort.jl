@@ -201,6 +201,16 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `subscribe(ctx, symbols, sub_types)`: Subscribe to quotes
 - `unsubscribe(ctx, symbols, sub_types)`: Unsubscribe from quotes
 
+### Realtime Data Access (Local Cache)
+- `realtime_depth(ctx, symbol)`: Get cached depth data for subscribed symbol
+- `realtime_brokers(ctx, symbol)`: Get cached broker queue for subscribed symbol
+- `realtime_trades(ctx, symbol; count)`: Get cached trades for subscribed symbol
+- `realtime_candlesticks(ctx, symbol, period; count)`: Get cached K-line data
+
+### Candlestick Subscription
+- `subscribe_candlesticks(ctx, symbol, period; count)`: Subscribe and get initial K-line data
+- `unsubscribe_candlesticks(ctx, symbol, period)`: Unsubscribe and clear cached data
+
 ### Watchlist Management
 - `create_watchlist_group(ctx, name; securities)`: Create a watchlist group
 - `watchlist(ctx)`: View watchlist groups

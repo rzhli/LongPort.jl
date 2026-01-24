@@ -204,6 +204,16 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `subscribe(ctx, symbols, sub_types)`: 订阅行情
 - `unsubscribe(ctx, symbols, sub_types)`: 取消订阅
 
+### 实时数据访问（本地缓存）
+- `realtime_depth(ctx, symbol)`: 获取已订阅标的的缓存盘口数据
+- `realtime_brokers(ctx, symbol)`: 获取已订阅标的的缓存经纪队列
+- `realtime_trades(ctx, symbol; count)`: 获取已订阅标的的缓存成交明细
+- `realtime_candlesticks(ctx, symbol, period; count)`: 获取缓存的 K 线数据
+
+### K 线订阅
+- `subscribe_candlesticks(ctx, symbol, period; count)`: 订阅并获取初始 K 线数据
+- `unsubscribe_candlesticks(ctx, symbol, period)`: 取消订阅并清除缓存
+
 ### 自选股管理
 - `create_watchlist_group(ctx, name; securities)`: 创建自选股分组
 - `watchlist(ctx)`: 查看自选股分组

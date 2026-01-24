@@ -68,8 +68,12 @@ module LongPort
            set_on_quote, set_on_depth, set_on_brokers, set_on_trades, set_on_candlestick
     # 实时行情
     export realtime_quote, static_info, depth, brokers, trades, intraday
+    # 实时数据访问 (从本地缓存)
+    export realtime_depth, realtime_brokers, realtime_trades, realtime_candlesticks
     # K线数据
     export candlesticks, history_candlesticks_by_offset, history_candlesticks_by_date
+    # K线订阅
+    export subscribe_candlesticks, unsubscribe_candlesticks
     # 期权
     export option_quote, option_chain_expiry_date_list, option_chain_info_by_date,
            option_chain_dates, option_chain_strikes

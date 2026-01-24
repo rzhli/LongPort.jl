@@ -2,6 +2,23 @@
 
 ## v0.3.0 (2026-01-23)
 
+### New Features
+
+- **RealtimeStore**: Added local data caching for WebSocket push events
+  - `RealtimeStore{Q,D,B,T,C}` parametric struct in Cache module
+  - Thread-safe storage with `ReentrantLock`
+  - Automatically caches all push data (quotes, depth, brokers, trades)
+
+- **Realtime Data Access Methods**: New methods to read cached push data
+  - `realtime_depth(ctx, symbol)` - Get cached depth data
+  - `realtime_brokers(ctx, symbol)` - Get cached broker queue
+  - `realtime_trades(ctx, symbol; count)` - Get cached trades
+  - `realtime_candlesticks(ctx, symbol, period; count)` - Get cached K-lines
+
+- **Candlestick Subscription**: New methods for K-line subscription
+  - `subscribe_candlesticks(ctx, symbol, period; count)` - Subscribe and get initial data
+  - `unsubscribe_candlesticks(ctx, symbol, period)` - Unsubscribe and clear cache
+
 ### Breaking Changes
 
 - **Struct Type Changes**: Several struct types are now parametric, which may affect code that explicitly typed these structs:

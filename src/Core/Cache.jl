@@ -2,12 +2,16 @@
 缓存机制模块
 
 提供基于时间的缓存功能，用于提高API调用性能。
+同时提供实时数据存储，用于缓存WebSocket推送的实时行情数据。
 """
 module Cache
 
 using Dates
 
-export SimpleCache, CacheWithKey, get_or_update
+export SimpleCache, CacheWithKey, get_or_update, RealtimeStore,
+       update_quote!, update_depth!, update_brokers!, update_trades!, update_candlesticks!,
+       get_quote, get_depth, get_brokers, get_trades, get_candlesticks,
+       clear_store!, clear_candlesticks!
 
 """
 CacheItem
@@ -226,6 +230,273 @@ function cache_stats(cache::CacheWithKey)
         expired_items = expired_items,
         ttl_seconds = cache.ttl_seconds
     )
+end
+
+# =============================================================================
+# Realtime Store - 用于缓存WebSocket推送的实时行情数据
+# =============================================================================
+
+"""
+    SecurityData{Q, D, B, T}
+
+单个证券的实时数据存储。
+
+# Type Parameters
+- `Q`: Quote数据类型 (PushQuote)
+- `D`: Depth数据类型 (PushDepth)
+- `B`: Brokers数据类型 (PushBrokers)
+- `T`: Trade数据类型
+"""
+mutable struct SecurityData{Q, D, B, T}
+    quote_data::Union{Nothing, Q}
+    depth::Union{Nothing, D}
+    brokers::Union{Nothing, B}
+    trades::Vector{T}
+    max_trades::Int
+
+    function SecurityData{Q, D, B, T}(; max_trades::Int = 500) where {Q, D, B, T}
+        new{Q, D, B, T}(nothing, nothing, nothing, T[], max_trades)
+    end
+end
+
+"""
+    CandlestickData{C}
+
+K线数据存储。
+
+# Type Parameters
+- `C`: Candlestick数据类型
+"""
+mutable struct CandlestickData{C}
+    candlesticks::Vector{C}
+    max_count::Int
+
+    function CandlestickData{C}(; max_count::Int = 1000) where C
+        new{C}(C[], max_count)
+    end
+end
+
+"""
+    RealtimeStore{Q, D, B, T, C}
+
+实时数据存储，用于缓存WebSocket推送的行情数据。
+
+# Type Parameters
+- `Q`: Quote数据类型 (PushQuote)
+- `D`: Depth数据类型 (PushDepth)
+- `B`: Brokers数据类型 (PushBrokers)
+- `T`: Trade数据类型
+- `C`: Candlestick数据类型
+
+# Usage
+```julia
+using LongPort.Core.QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
+store = RealtimeStore{PushQuote, PushDepth, PushBrokers, Trade, Candlestick}()
+
+# Update from push events
+update_quote!(store, "700.HK", quote_data)
+update_depth!(store, "700.HK", depth_data)
+
+# Get cached data
+quote = get_quote(store, "700.HK")
+depth = get_depth(store, "700.HK")
+```
+"""
+mutable struct RealtimeStore{Q, D, B, T, C}
+    securities::Dict{String, SecurityData{Q, D, B, T}}
+    candlesticks::Dict{Tuple{String, Int}, CandlestickData{C}}  # (symbol, period) -> data
+    lock::ReentrantLock
+
+    function RealtimeStore{Q, D, B, T, C}() where {Q, D, B, T, C}
+        new{Q, D, B, T, C}(
+            Dict{String, SecurityData{Q, D, B, T}}(),
+            Dict{Tuple{String, Int}, CandlestickData{C}}(),
+            ReentrantLock()
+        )
+    end
+end
+
+# Helper to get or create security data
+function _get_security!(store::RealtimeStore{Q, D, B, T, C}, symbol::String) where {Q, D, B, T, C}
+    get!(store.securities, symbol) do
+        SecurityData{Q, D, B, T}()
+    end
+end
+
+"""
+    update_quote!(store::RealtimeStore, symbol::String, quote)
+
+更新证券的实时报价数据。
+"""
+function update_quote!(store::RealtimeStore{Q, D, B, T, C}, symbol::String, quote_data::Q) where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = _get_security!(store, symbol)
+        security.quote_data = quote_data
+    end
+end
+
+"""
+    update_depth!(store::RealtimeStore, symbol::String, depth)
+
+更新证券的盘口深度数据。
+"""
+function update_depth!(store::RealtimeStore{Q, D, B, T, C}, symbol::String, depth::D) where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = _get_security!(store, symbol)
+        security.depth = depth
+    end
+end
+
+"""
+    update_brokers!(store::RealtimeStore, symbol::String, brokers)
+
+更新证券的经纪队列数据。
+"""
+function update_brokers!(store::RealtimeStore{Q, D, B, T, C}, symbol::String, brokers::B) where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = _get_security!(store, symbol)
+        security.brokers = brokers
+    end
+end
+
+"""
+    update_trades!(store::RealtimeStore, symbol::String, trades::Vector)
+
+更新证券的成交明细数据。新成交追加到末尾，超过max_trades时删除最旧的数据。
+"""
+function update_trades!(store::RealtimeStore{Q, D, B, T, C}, symbol::String, new_trades::Vector{T}) where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = _get_security!(store, symbol)
+        append!(security.trades, new_trades)
+        # 保留最新的 max_trades 条记录
+        if length(security.trades) > security.max_trades
+            deleteat!(security.trades, 1:(length(security.trades) - security.max_trades))
+        end
+    end
+end
+
+"""
+    update_candlesticks!(store::RealtimeStore, symbol::String, period::Int, candlesticks::Vector)
+
+更新或初始化证券的K线数据。
+"""
+function update_candlesticks!(store::RealtimeStore{Q, D, B, T, C}, symbol::String, period::Int, new_candlesticks::Vector{C}) where {Q, D, B, T, C}
+    lock(store.lock) do
+        key = (symbol, period)
+        if !haskey(store.candlesticks, key)
+            store.candlesticks[key] = CandlestickData{C}()
+        end
+        data = store.candlesticks[key]
+        # Replace with new data (for initial load)
+        data.candlesticks = new_candlesticks
+    end
+end
+
+"""
+    get_quote(store::RealtimeStore, symbol::String) -> Union{Nothing, Q}
+
+获取证券的实时报价数据。
+"""
+function get_quote(store::RealtimeStore{Q, D, B, T, C}, symbol::String)::Union{Nothing, Q} where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = get(store.securities, symbol, nothing)
+        isnothing(security) ? nothing : security.quote_data
+    end
+end
+
+"""
+    get_depth(store::RealtimeStore, symbol::String) -> Union{Nothing, D}
+
+获取证券的盘口深度数据。
+"""
+function get_depth(store::RealtimeStore{Q, D, B, T, C}, symbol::String)::Union{Nothing, D} where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = get(store.securities, symbol, nothing)
+        isnothing(security) ? nothing : security.depth
+    end
+end
+
+"""
+    get_brokers(store::RealtimeStore, symbol::String) -> Union{Nothing, B}
+
+获取证券的经纪队列数据。
+"""
+function get_brokers(store::RealtimeStore{Q, D, B, T, C}, symbol::String)::Union{Nothing, B} where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = get(store.securities, symbol, nothing)
+        isnothing(security) ? nothing : security.brokers
+    end
+end
+
+"""
+    get_trades(store::RealtimeStore, symbol::String; count::Int=0) -> Vector{T}
+
+获取证券的成交明细数据。
+
+# Arguments
+- `symbol::String`: 证券代码
+- `count::Int=0`: 返回的最大条数，0表示返回全部
+"""
+function get_trades(store::RealtimeStore{Q, D, B, T, C}, symbol::String; count::Int=0)::Vector{T} where {Q, D, B, T, C}
+    lock(store.lock) do
+        security = get(store.securities, symbol, nothing)
+        if isnothing(security)
+            return T[]
+        end
+        trades = security.trades
+        if count > 0 && count < length(trades)
+            return trades[end-count+1:end]
+        end
+        return copy(trades)
+    end
+end
+
+"""
+    get_candlesticks(store::RealtimeStore, symbol::String, period::Int; count::Int=0) -> Vector{C}
+
+获取证券的K线数据。
+
+# Arguments
+- `symbol::String`: 证券代码
+- `period::Int`: K线周期
+- `count::Int=0`: 返回的最大条数，0表示返回全部
+"""
+function get_candlesticks(store::RealtimeStore{Q, D, B, T, C}, symbol::String, period::Int; count::Int=0)::Vector{C} where {Q, D, B, T, C}
+    lock(store.lock) do
+        key = (symbol, period)
+        data = get(store.candlesticks, key, nothing)
+        if isnothing(data)
+            return C[]
+        end
+        candlesticks = data.candlesticks
+        if count > 0 && count < length(candlesticks)
+            return candlesticks[end-count+1:end]
+        end
+        return copy(candlesticks)
+    end
+end
+
+"""
+    clear_store!(store::RealtimeStore)
+
+清空所有缓存数据。
+"""
+function clear_store!(store::RealtimeStore)
+    lock(store.lock) do
+        empty!(store.securities)
+        empty!(store.candlesticks)
+    end
+end
+
+"""
+    clear_candlesticks!(store::RealtimeStore, symbol::String, period::Int)
+
+清除指定证券和周期的K线数据（用于取消订阅时）。
+"""
+function clear_candlesticks!(store::RealtimeStore, symbol::String, period::Int)
+    lock(store.lock) do
+        delete!(store.candlesticks, (symbol, period))
+    end
 end
 
 end # module Cache
