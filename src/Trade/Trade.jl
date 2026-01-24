@@ -11,6 +11,8 @@ module Trade
     using ..TradeProtocol
     using ..Utils: Arc, to_china_time, safeparse
 
+    import ..disconnect!
+
     # --- Public API ---
     export TradeContext, subscribe, unsubscribe, history_executions, today_executions,
            history_orders, today_orders, replace_order, submit_order, cancel_order, account_balance,
@@ -520,7 +522,7 @@ end
         end
     end
 
-    function LongPort.disconnect!(ctx::TradeContext)
+    function disconnect!(ctx::TradeContext)
         inner = ctx.inner
         if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
             put!(inner.command_ch, DisconnectCmd())

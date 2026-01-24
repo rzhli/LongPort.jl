@@ -25,6 +25,8 @@ using ..Utils: to_namedtuple, to_china_time, Arc
 
 using ..Errors
 
+import ..disconnect!
+
 export QuoteContext,
        realtime_quote, subscribe, unsubscribe, static_info, depth, intraday,
        brokers, trades, candlesticks,
@@ -862,7 +864,7 @@ function security_list(ctx::QuoteContext, market::Market.T, category::SecurityLi
     return DataFrame(to_namedtuple(resp.data.list))
 end
 
-function LongPort.disconnect!(ctx::QuoteContext)
+function disconnect!(ctx::QuoteContext)
     inner = ctx.inner
     if !isnothing(inner.core_task) && !istaskdone(inner.core_task)
         put!(inner.command_ch, DisconnectCmd())
