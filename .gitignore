@@ -27,4 +27,5 @@ config.toml
 *~
 
 # test files
-test.jlopenapi-reference/
+test.jl
+openapi-reference/

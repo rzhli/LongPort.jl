@@ -10,6 +10,7 @@ module Trade
     using ..TradePush
     using ..TradeProtocol
     using ..Utils: Arc, to_china_time, safeparse
+    using ..Commands: AbstractCommand, HttpGetCmd, HttpPostCmd, HttpPutCmd, HttpDeleteCmd, DisconnectCmd
 
     import ..disconnect!
 
@@ -18,35 +19,8 @@ module Trade
            history_orders, today_orders, replace_order, submit_order, cancel_order, account_balance,
            cash_flow, fund_positions, stock_positions, margin_ratio, order_detail, estimate_max_purchase_quantity,
            set_on_order_changed
-    
-    # --- Core Actor Implementation ---
 
-    abstract type AbstractCommand end
-
-    struct HttpGetCmd <: AbstractCommand
-        path::String
-        params::Dict{String,Any}
-        resp_ch::Channel{Any}
-    end
-
-    struct HttpPostCmd <: AbstractCommand
-        path::String
-        body::Any
-        resp_ch::Channel{Any}
-    end
-
-    struct HttpPutCmd <: AbstractCommand
-        path::String
-        body::Any
-        resp_ch::Channel{Any}
-    end
-
-    struct HttpDeleteCmd <: AbstractCommand
-        path::String
-        params::Dict{String,Any}
-        resp_ch::Channel{Any}
-    end
-
+    # Trade-specific commands for WebSocket subscription
     struct SubscribeCmd <: AbstractCommand
         topics::Vector{String}
         resp_ch::Channel{Any}
@@ -56,8 +30,6 @@ module Trade
         topics::Vector{String}
         resp_ch::Channel{Any}
     end
-
-    struct DisconnectCmd <: AbstractCommand end
 
 mutable struct InnerTradeContext
     config::Config.config
@@ -214,6 +186,42 @@ end
         d
     end
 
+    # Helper: parse optional timestamp
+    _parse_optional_time(v) = (isempty(v) || v == "0") ? nothing : to_china_time(v)
+
+    # Helper: parse order data from API response
+    function _parse_order_data(o)
+        d = Dict{String, Any}(String(k) => v for (k, v) in o)
+        d["quantity"] = safeparse(Int64, d["quantity"])
+        d["executed_quantity"] = safeparse(Int64, d["executed_quantity"])
+        d["price"] = safeparse(Float64, d["price"])
+        d["executed_price"] = safeparse(Float64, d["executed_price"])
+        d["submitted_at"] = to_china_time(d["submitted_at"])
+        d["updated_at"] = _parse_optional_time(d["updated_at"])
+        d["trigger_at"] = _parse_optional_time(d["trigger_at"])
+        d["expire_date"] = isempty(d["expire_date"]) ? nothing : Date(d["expire_date"])
+        d["last_done"] = safeparse(Float64, d["last_done"])
+        d["trigger_price"] = safeparse(Float64, d["trigger_price"])
+        d["trailing_amount"] = safeparse(Float64, d["trailing_amount"])
+        d["trailing_percent"] = safeparse(Float64, d["trailing_percent"])
+        d["limit_offset"] = safeparse(Float64, d["limit_offset"])
+        return d
+    end
+
+    # Helper: convert orders to DataFrame
+    function _orders_to_dataframe(orders::Vector{Order})
+        DataFrame(
+            "Order ID" => [o.order_id for o in orders],
+            "Symbol" => [o.symbol for o in orders],
+            "Side" => [o.side for o in orders],
+            "Status" => [o.status for o in orders],
+            "Order Type" => [o.order_type for o in orders],
+            "Quantity" => [o.quantity for o in orders],
+            "Price" => [o.price for o in orders],
+            "Submitted At" => [o.submitted_at for o in orders],
+        )
+    end
+
     function set_on_order_changed(ctx::TradeContext, cb::Function); TradePush.set_on_order_changed!(ctx.inner.callbacks, cb); end
 
     function subscribe(ctx::TradeContext, topics::Vector{TopicType.T})
@@ -270,38 +278,9 @@ end
         options = GetHistoryOrdersOptions(symbol=symbol, status=status, side=side, start_at=start_at, end_at=end_at)
         cmd = HttpGetCmd("/v1/trade/order/history", to_dict(options), Channel(1))
         resp = request(ctx, cmd)
-        if resp.code == 0
-            orders_data = map(resp.data.orders) do o
-                d = Dict{String, Any}(String(k) => v for (k, v) in o)
-                d["quantity"] = safeparse(Int64, d["quantity"])
-                d["executed_quantity"] = safeparse(Int64, d["executed_quantity"])
-                d["price"] = safeparse(Float64, d["price"])
-                d["executed_price"] = safeparse(Float64, d["executed_price"])
-                d["submitted_at"] = to_china_time(d["submitted_at"])
-                d["updated_at"] = (isempty(d["updated_at"]) || d["updated_at"] == "0") ? nothing : to_china_time(d["updated_at"])
-                d["trigger_at"] = (isempty(d["trigger_at"]) || d["trigger_at"] == "0") ? nothing : to_china_time(d["trigger_at"])
-                d["expire_date"] = isempty(d["expire_date"]) ? nothing : Date(d["expire_date"])
-                d["last_done"] = safeparse(Float64, d["last_done"])
-                d["trigger_price"] = safeparse(Float64, d["trigger_price"])
-                d["trailing_amount"] = safeparse(Float64, d["trailing_amount"])
-                d["trailing_percent"] = safeparse(Float64, d["trailing_percent"])
-                d["limit_offset"] = safeparse(Float64, d["limit_offset"])
-                return d
-            end
-            orders = JSON3.read(JSON3.write(orders_data), Vector{Order})
-            return DataFrame(
-                "Order ID" => [o.order_id for o in orders],
-                "Symbol" => [o.symbol for o in orders],
-                "Side" => [o.side for o in orders],
-                "Status" => [o.status for o in orders],
-                "Type" => [o.order_type for o in orders],
-                "Quantity" => [o.quantity for o in orders],
-                "Price" => [o.price for o in orders],
-                "Submitted At" => [o.submitted_at for o in orders],
-            )
-        else
-            @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-        end
+        resp.code == 0 || @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+        orders = JSON3.read(JSON3.write(map(_parse_order_data, resp.data.orders)), Vector{Order})
+        _orders_to_dataframe(orders)
     end
 
     function today_orders(
@@ -313,38 +292,9 @@ end
         options = GetTodayOrdersOptions(symbol=symbol, status=status, side=side)
         cmd = HttpGetCmd("/v1/trade/order/today", to_dict(options), Channel(1))
         resp = request(ctx, cmd)
-        if resp.code == 0
-            orders_data = map(resp.data.orders) do o
-                d = Dict{String, Any}(String(k) => v for (k, v) in o)
-                d["quantity"] = safeparse(Int64, d["quantity"])
-                d["executed_quantity"] = safeparse(Int64, d["executed_quantity"])
-                d["price"] = safeparse(Float64, d["price"])
-                d["executed_price"] = safeparse(Float64, d["executed_price"])
-                d["submitted_at"] = to_china_time(d["submitted_at"])
-                d["updated_at"] = (isempty(d["updated_at"]) || d["updated_at"] == "0") ? nothing : to_china_time(d["updated_at"])
-                d["trigger_at"] = (isempty(d["trigger_at"]) || d["trigger_at"] == "0") ? nothing : to_china_time(d["trigger_at"])
-                d["expire_date"] = isempty(d["expire_date"]) ? nothing : Date(d["expire_date"])
-                d["last_done"] = safeparse(Float64, d["last_done"])
-                d["trigger_price"] = safeparse(Float64, d["trigger_price"])
-                d["trailing_amount"] = safeparse(Float64, d["trailing_amount"])
-                d["trailing_percent"] = safeparse(Float64, d["trailing_percent"])
-                d["limit_offset"] = safeparse(Float64, d["limit_offset"])
-                return d
-            end
-            orders = JSON3.read(JSON3.write(orders_data), Vector{Order})
-            return DataFrame(
-                "Order ID" => [o.order_id for o in orders],
-                "Symbol" => [o.symbol for o in orders],
-                "Side" => [o.side for o in orders],
-                "Status" => [o.status for o in orders],
-                "Order Type" => [o.order_type for o in orders],
-                "Quantity" => [o.quantity for o in orders],
-                "Price" => [o.price for o in orders],
-                "Submitted At" => [o.submitted_at for o in orders],
-            )
-        else
-            @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-        end
+        resp.code == 0 || @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+        orders = JSON3.read(JSON3.write(map(_parse_order_data, resp.data.orders)), Vector{Order})
+        _orders_to_dataframe(orders)
     end
 
     function replace_order(ctx::TradeContext, options::ReplaceOrderOptions)

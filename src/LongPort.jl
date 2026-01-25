@@ -14,6 +14,7 @@ module LongPort
     include("Core/Errors.jl")
     include("Core/Utils.jl")
     include("Core/Cache.jl")
+    include("Core/Commands.jl")
     include("Core/ControlProtocol.jl")
     include("Core/QuoteProtocol.jl")
     include("Core/TradeProtocol.jl")
@@ -29,6 +30,7 @@ module LongPort
     using .ControlProtocol
     using .QuoteProtocol
     using .TradeProtocol
+    using .Commands
     using .Cache
     using .Config
     using .Errors
