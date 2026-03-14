@@ -1,11 +1,26 @@
 """
-LongPort Julia SDK - Test Script
+LongBridge Julia SDK - Test Script
 (Tests functions individually using the new Actor-based API)
 """
 
-using LongPort, Dates, Revise
+using LongBridge, Dates, Revise
 
-# Load config from TOML file
+# 1. Use OAuth 2.0 (Recommended)
+# First  obtain client_id by:
+#=  
+  curl -X POST https://openapi.longbridgeapp.com/oauth2/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "My Application",
+    "redirect_uris": ["http://localhost:60355/callback"],
+    "grant_types": ["authorization_code", "refresh_token"]
+  }'
+=#
+# Second build the OAuth handle (opens browser for authorization)
+oauth = OAuthBuilder("3e1bdd01-9d0d-412f-8a9b-d89510912334") |> build(url -> run(`xdg-open $url`))
+cfg = Config.from_oauth(oauth)
+
+# Or use the legacy Legacy API Key by loading config from TOML file
 cfg = Config.from_toml()
 
 # 行情
@@ -55,7 +70,7 @@ end
 )
 # before 2023-01-01
 @time history_offset_data = history_candlesticks_by_offset(
-    ctx, "700.HK", CandlePeriod.FOUR_HOUR, AdjustType.NO_ADJUST, Direction.BACKWARD, 10; date = DateTime(2024, 1, 1)
+    ctx, "700.HK", CandlePeriod.FOUR_HOUR, AdjustType.NO_ADJUST, Direction.BACKWARD, 10; date = DateTime(2025, 1, 1)
 )
 # 2023-01-01 to 2023-02-01
 @time history_date_data = history_candlesticks_by_date(ctx, "AAPL.US", CandlePeriod.ONE_MINUTE, AdjustType.NO_ADJUST; trade_sessions = TradeSession.Intraday)
@@ -246,7 +261,7 @@ group_id = create_watchlist_group(ctx, "Watchlist1", securities = ["700.HK", "AA
 @time resp = watchlist(ctx)
 
 ### 删除自选股
-message = delete_watchlist_group(ctx, 4145256, true)
+message = delete_watchlist_group(ctx, 4281496, true)
 
 ### 更新自选股
 update_watchlist_group(ctx, 10086, name = "WatchList2", securities = ["700.HK", "AAPL.US"], mode = SecuritiesUpdateMode.Add)
@@ -261,7 +276,7 @@ disconnect!(ctx)
 
 
 # 交易
-using LongPort, Dates
+using LongBridge, Dates
 
 # Load config from TOML file
 cfg = Config.from_toml()

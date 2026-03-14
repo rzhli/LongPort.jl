@@ -1,6 +1,6 @@
 [English](./README.md) | [中文](./README.zh-CN.md)
 
-# Julia SDK for LongPort API
+# Julia SDK for LongBridge API
 This is an unofficial SDK, currently for personal use only. Some functions in the Trade module have not been tested yet. Issues are welcome.
 
 ## Release Notes
@@ -35,13 +35,13 @@ token_expire_time = "2025-07-22T00:00:00"  # ISO8601 format, UTC time
 
 ```julia
 using Pkg
-Pkg.add("LongPort")
+Pkg.add("LongBridge")
 ```
 
 ### Quotes
 
 ```julia
-using LongPort
+using LongBridge
 
 # Load configuration from TOML file
 cfg = Config.from_toml()
@@ -101,7 +101,7 @@ disconnect!(ctx)
 ### Trading
 
 ```julia
-using LongPort
+using LongBridge
 
 # Load configuration from TOML file
 cfg = Config.from_toml()

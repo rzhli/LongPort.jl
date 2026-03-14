@@ -40,7 +40,7 @@
 ### Breaking Changes
 
 - **Struct Type Changes**: Several struct types are now parametric, which may affect code that explicitly typed these structs:
-  - `LongPortError{T}` (was `LongPortError`)
+  - `LongBridgeError{T}` (was `LongBridgeError`)
   - `PushEvent{T}` in `QuotePush` and `TradeProtocol`
   - `CacheItem{T}` in `Cache`
 
@@ -48,7 +48,7 @@
 
 - **Type Stability**: Made struct fields type-stable across all modules:
   - `Cache.jl`: Fixed `CacheItem{T}` parametric type, typed callbacks with `F where F`
-  - `Errors.jl`: Made `LongPortError{T}` parametric with typed payload
+  - `Errors.jl`: Made `LongBridgeError{T}` parametric with typed payload
   - `TradeProtocol.jl`: Made `PushEvent{T}` parametric
   - `QuotePush.jl`: Made `PushEvent{T}` parametric
   - `TradePush.jl`: Changed `AbstractString` to `String` in `PushOrderChanged`
@@ -60,7 +60,7 @@
 ### Refactoring
 
 - **`disconnect!` Function**: Moved `disconnect!` implementations back to `Quote.jl` and `Trade.jl` modules (type defines methods pattern)
-- **Module Cleanup**: Removed unused `__init__` function from `LongPort.jl`
+- **Module Cleanup**: Removed unused `__init__` function from `LongBridge.jl`
 
 ### Bug Fixes
 
@@ -81,7 +81,7 @@
 
 ### Refactoring
 
-- **`disconnect!` Function**: Moved the `disconnect!` function from the `Quote` and `Trade` modules to the main `LongPort` module, using multiple dispatch to handle both `QuoteContext` and `TradeContext` types. This simplifies the API and improves code organization.
+- **`disconnect!` Function**: Moved the `disconnect!` function from the `Quote` and `Trade` modules to the main `LongBridge` module, using multiple dispatch to handle both `QuoteContext` and `TradeContext` types. This simplifies the API and improves code organization.
 
 ## v0.2.7 (2025-08-15)
 

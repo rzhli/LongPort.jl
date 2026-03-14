@@ -17,6 +17,7 @@ Thumbs.db
 # Configuration files with sensitive data
 config.toml
 *.env
+.tokens/
 
 # Logs
 *.log

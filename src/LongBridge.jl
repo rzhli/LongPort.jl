@@ -1,5 +1,5 @@
 __precompile__()
-module LongPort
+module LongBridge
 
     using TOML, Dates
 
@@ -18,6 +18,7 @@ module LongPort
     include("Core/ControlProtocol.jl")
     include("Core/QuoteProtocol.jl")
     include("Core/TradeProtocol.jl")
+    include("OAuth.jl")
     include("Config.jl")
     include("Client.jl")
 
@@ -32,6 +33,7 @@ module LongPort
     using .TradeProtocol
     using .Commands
     using .Cache
+    using .OAuth
     using .Config
     using .Errors
     using .Client
@@ -48,7 +50,10 @@ module LongPort
            VERSION
 
     # --- Config ---
-    export config                                           # 配置加载
+    export config, from_oauth                                  # 配置加载
+
+    # --- OAuth ---
+    export OAuthBuilder, OAuthHandle, OAuthToken, build
 
     # --- Constant (Enums) ---
     export Market, Currency
@@ -110,4 +115,4 @@ module LongPort
     # 推送
     export set_on_order_changed
 
-end # module LongPort
+end # module LongBridge

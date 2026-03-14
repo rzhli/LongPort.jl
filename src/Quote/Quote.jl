@@ -146,7 +146,7 @@ function core_run(inner::InnerQuoteContext, push_tx::Channel)
             if e isa InvalidStateException && e.state == :closed
                 # @warn "Command channel closed, shutting down core actor."
                 should_run = false
-            elseif e isa LongportException && occursin("WebSocket", e.message)
+            elseif e isa LongBridgeException && occursin("WebSocket", e.message)
                 @warn "Connection lost, attempting to reconnect..." exception=(e, catch_backtrace())
                 
                 # Attempt fast reconnect first

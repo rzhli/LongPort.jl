@@ -290,7 +290,7 @@ end
 
 # Usage
 ```julia
-using LongPort.Core.QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
+using LongBridge.Core.QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
 store = RealtimeStore{PushQuote, PushDepth, PushBrokers, Trade, Candlestick}()
 
 # Update from push events

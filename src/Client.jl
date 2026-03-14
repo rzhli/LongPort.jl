@@ -10,6 +10,7 @@ using ..Constant
 using ..ControlProtocol
 using ..QuoteProtocol
 using ..Errors
+using ..OAuth: OAuthHandle, access_token as oauth_access_token
 
 export WSClient, refresh_token, post, put, delete
 
@@ -29,26 +30,30 @@ const COMMAND_CODE_CLOSE = UInt8(ControlCommand.CMD_CLOSE)
 # ==================== Signature Authentication ====================
 
 """
-sign(method::String, path::String, headers::Dict{String, String}, 
-     params::String, body::String, config::Config.config)::String
+sign(method, path, headers, params, body, config) -> Union{String, Nothing}
 
-Generate API signature for authentication based on Rust implementation
+Generate API signature for authentication. Returns `nothing` in OAuth mode (empty app_secret).
 """
 function sign(
     method::String, path::String, headers::Dict{String, String},
     params::String, body::String, config::Config.config
-    )::String
-    
+    )::Union{String, Nothing}
+
+    # OAuth mode: no HMAC signature needed
+    if isempty(config.app_secret)
+        return nothing
+    end
+
     # 获取必要的参数
     app_key = config.app_key
     app_secret = config.app_secret
     access_token = config.access_token
     timestamp = headers["X-Timestamp"]
-    
+
     # 构建signed_headers和signed_values
     if !isnothing(access_token) && !isempty(access_token)
         signed_headers = "authorization;x-api-key;x-timestamp"
-        signed_values = "authorization:Bearer $(access_token)\nx-api-key:$(app_key)\nx-timestamp:$(timestamp)\n"
+        signed_values = "authorization:$(access_token)\nx-api-key:$(app_key)\nx-timestamp:$(timestamp)\n"
     else
         signed_headers = "x-api-key;x-timestamp"
         signed_values = "x-api-key:$(app_key)\nx-timestamp:$(timestamp)\n"
@@ -102,18 +107,30 @@ function _http_request(config::Config.config, method::String, path::String;
         base_url = config.http_url
         query_string = _build_query_string(params)
         full_url = base_url * path * (isempty(query_string) ? "" : "?" * query_string)
-
-        timestamp = string(floor(Int, time() * 1000))
-        headers = Dict{String, String}(
-            "X-Api-Key" => config.app_key,
-            "Authorization" => "Bearer $(config.access_token)",
-            "X-Timestamp" => timestamp,
-            "Content-Type" => "application/json; charset=utf-8"
-        )
-
         body_str = isnothing(body) ? "" : JSON3.write(body)
-        signature = sign(method, path, headers, query_string, body_str, config)
-        headers["X-Api-Signature"] = signature
+
+        if config.auth_mode == :oauth
+            # OAuth mode: Bearer token, no HMAC signature
+            token = oauth_access_token(config.oauth)
+            headers = Dict{String, String}(
+                "X-Api-Key" => config.app_key,
+                "Authorization" => "Bearer $token",
+                "Content-Type" => "application/json; charset=utf-8"
+            )
+        else
+            # API Key mode: HMAC-SHA256 signature
+            timestamp = string(floor(Int, time() * 1000))
+            headers = Dict{String, String}(
+                "X-Api-Key" => config.app_key,
+                "Authorization" => config.access_token,
+                "X-Timestamp" => timestamp,
+                "Content-Type" => "application/json; charset=utf-8"
+            )
+            signature = sign(method, path, headers, query_string, body_str, config)
+            if !isnothing(signature)
+                headers["X-Api-Signature"] = signature
+            end
+        end
 
         if method in ("GET", "DELETE")
             http_fn = method == "GET" ? HTTP.get : HTTP.delete
@@ -700,7 +717,7 @@ function ws_request(
     end
     
     if !haskey(client.pending_responses, response_key)
-        throw(LongportException("请求超时"))
+        throw(LongBridgeException("请求超时"))
     end
     
     status_code, response_body = pop!(client.pending_responses, response_key)

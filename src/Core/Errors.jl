@@ -2,7 +2,7 @@ module Errors
 
     using JSON3, HTTP
 
-    export LongPortError, @lperror, ApiResponse
+    export LongBridgeError, @lperror, ApiResponse
 
     struct ApiResponse{T}
         code::Int
@@ -18,7 +18,7 @@ module Errors
         end
     end
 
-    struct LongPortError{T} <: Exception
+    struct LongBridgeError{T} <: Exception
         code::Int
         message::String
         request_id::Union{Nothing,String}
@@ -26,14 +26,14 @@ module Errors
     end
 
     # Convenience constructor for nothing payload
-    LongPortError(code::Int, message::String, request_id::Union{Nothing,String}=nothing) =
-        LongPortError{Nothing}(code, message, request_id, nothing)
+    LongBridgeError(code::Int, message::String, request_id::Union{Nothing,String}=nothing) =
+        LongBridgeError{Nothing}(code, message, request_id, nothing)
 
-    Base.showerror(io::IO, e::LongPortError) = print(io,
-        "LongPortError(code=$(e.code), message=$(e.message), request_id=$(e.request_id))")
+    Base.showerror(io::IO, e::LongBridgeError) = print(io,
+        "LongBridgeError(code=$(e.code), message=$(e.message), request_id=$(e.request_id))")
 
     macro lperror(code, message, request_id=nothing, payload=nothing)
-        :(throw(LongPortError($(esc(code)), $(esc(message)), $(esc(request_id)), $(esc(payload)))))
+        :(throw(LongBridgeError($(esc(code)), $(esc(message)), $(esc(request_id)), $(esc(payload)))))
     end
 
 end # module Errors

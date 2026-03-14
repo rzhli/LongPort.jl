@@ -1,6 +1,6 @@
 [English](./README.md) | [中文](./README.zh-CN.md)
 
-# Julia SDK for LongPort API
+# Julia SDK for LongBridge API
 非官方，目前仅自用，交易（Trade）模块某些函数暂未测试，欢迎提issue
 
 ## 更新日志
@@ -38,13 +38,13 @@ push_candlestick_mode = "Realtime"
 
 ```julia
 using Pkg
-Pkg.add("LongPort")
+Pkg.add("LongBridge")
 ```
 
 ### 行情
 
 ```julia
-using LongPort
+using LongBridge
 
 # 从 TOML 配置文件加载配置
 cfg = Config.from_toml()
@@ -104,7 +104,7 @@ Quote.disconnect!(ctx)
 ### 交易
 
 ```julia
-using LongPort
+using LongBridge
 
 # 从 TOML 配置文件加载配置
 cfg = from_toml()

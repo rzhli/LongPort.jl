@@ -3,9 +3,10 @@ module Config
     using TOML
     using HTTP, JSON3, SHA, Base64, Dates
     using ..Constant
-    using ..Errors: LongPortError
+    using ..Errors: LongBridgeError
+    using ..OAuth: OAuthHandle, access_token as oauth_access_token
 
-    export config, from_toml
+    export config, from_toml, from_oauth
 
     """
     Configuration options for Longport SDK
@@ -33,7 +34,9 @@ module Config
         trade_ws_url::Union{String, Nothing}
         language::Language.T
         enable_overnight::Bool
-        
+        auth_mode::Symbol          # :apikey or :oauth
+        oauth::Union{Nothing, OAuthHandle}
+
         function config(
             app_key::String,
             app_secret::String,
@@ -47,14 +50,16 @@ module Config
         )
             new(
                 app_key,
-                app_secret, 
+                app_secret,
                 access_token,
                 token_expire_time,
                 http_url,
                 quote_ws_url,
                 trade_ws_url,
                 language,
-                enable_overnight
+                enable_overnight,
+                :apikey,
+                nothing
             )
         end
     end
@@ -70,7 +75,7 @@ module Config
     """
     function from_toml(path::String)
         if !isfile(path)
-            throw(LongportException("Config file not found: $path"))
+            throw(LongBridgeException("Config file not found: $path"))
         end
         
         # URLs - use Constant defaults
@@ -84,7 +89,7 @@ module Config
         required_keys = ["app_key", "app_secret", "access_token"]
         for key in required_keys
             if !haskey(config_dict, key)
-                throw(LongportException("Missing required config key: $key"))
+                throw(LongBridgeException("Missing required config key: $key"))
             end
         end
         
@@ -165,7 +170,44 @@ module Config
             end
         end
         
-        throw(LongportException("Config file not found. Please create config.toml in one of these locations: $(join(config_paths, ", "))"))
+        throw(LongBridgeException("Config file not found. Please create config.toml in one of these locations: $(join(config_paths, ", "))"))
+    end
+
+    """
+    from_oauth(oauth_handle::OAuthHandle; kwargs...) -> config
+
+    Create a config from an OAuthHandle. In OAuth mode, HMAC signatures are
+    skipped and a Bearer token is used instead.
+
+    # Keyword Arguments
+    - `http_url`: HTTP API url (default: CN endpoint)
+    - `quote_ws_url`: WebSocket url for quote API (default: CN endpoint)
+    - `trade_ws_url`: WebSocket url for trade API (default: CN endpoint)
+    - `language`: Language identifier (default: ZH_CN)
+    - `enable_overnight`: Enable overnight quote (default: true)
+    """
+    function from_oauth(
+        oauth_handle::OAuthHandle;
+        http_url::Union{String, Nothing} = DEFAULT_HTTP_URL_CN,
+        quote_ws_url::Union{String, Nothing} = DEFAULT_QUOTE_WS_CN,
+        trade_ws_url::Union{String, Nothing} = DEFAULT_TRADE_WS_CN,
+        language::Language.T = Language.ZH_CN,
+        enable_overnight::Bool = true
+    )
+        cfg = config(
+            oauth_handle.client_id,   # app_key = client_id
+            "",                        # app_secret not needed for OAuth
+            "",                        # access_token resolved dynamically
+            DateTime(9999, 12, 31);    # placeholder, not used in OAuth mode
+            http_url = http_url,
+            quote_ws_url = quote_ws_url,
+            trade_ws_url = trade_ws_url,
+            language = language,
+            enable_overnight = enable_overnight
+        )
+        cfg.auth_mode = :oauth
+        cfg.oauth = oauth_handle
+        return cfg
     end
 
 end # module Config
