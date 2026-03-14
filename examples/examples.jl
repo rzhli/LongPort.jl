@@ -17,7 +17,7 @@ using LongBridge, Dates, Revise
   }'
 =#
 # Second build the OAuth handle (opens browser for authorization)
-oauth = OAuthBuilder("3e1bdd01-9d0d-412f-8a9b-d89510912334") |> build(url -> run(`xdg-open $url`))
+oauth = OAuthBuilder("your_client_id") |> build(url -> run(`xdg-open $url`))
 cfg = Config.from_oauth(oauth)
 
 # Or use the legacy Legacy API Key by loading config from TOML file

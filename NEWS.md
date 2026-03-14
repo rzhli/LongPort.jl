@@ -1,5 +1,29 @@
 # Release Notes
 
+## v0.4.0 (2026-03-14)
+
+### Breaking Changes
+
+- **SDK Renamed**: Module renamed from `LongPort` to `LongBridge` (`using LongBridge`)
+- **Error Type Renamed**: `LongPortError` → `LongBridgeError`
+
+### New Features
+
+- **OAuth 2.0 Authentication**: Added `OAuth` module with browser-based authorization code flow
+  - `OAuthBuilder("client-id") |> build(open_url_fn)` for one-line setup
+  - Automatic token persistence to `.tokens/<client_id>` and transparent refresh
+  - `Config.from_oauth(oauth_handle)` to create config from OAuth handle
+  - Dual auth mode in Client: OAuth (Bearer token) and API Key (HMAC signature)
+
+### Fixes
+
+- Fixed extra `Bearer ` prefix in API Key mode HMAC signature
+
+### Other
+
+- Removed `TagBot.yml` workflow
+- Updated dependencies (HTTP 1.11, ProtoBuf 1.3, etc.)
+
 ## v0.3.1 (2026-01-25)
 
 ### Performance Optimizations
