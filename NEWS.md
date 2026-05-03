@@ -1,5 +1,13 @@
 # Release Notes
 
+# Release Notes
+
+## v0.5.2 (2026-05-03)
+
+### Bug fixes
+
+- **`get_otp` 与 `refresh_token` 仍调用旧 `get`**：v0.5.1 把 HTTP 辅助函数从 `get`/`post`/`put`/`delete` 改名为 `http_get` 等，但 `Client.jl::get_otp` (line 197) 和 `Client.jl::refresh_token` (line 175) 内部还在用 `get(config, ...)`。重命名后这两个调用变成 `Base.get(::Settings, ::String)`，立刻报 `MethodError`。修：改为 `http_get(config, ...)`。
+
 ## v0.5.1 (2026-05-03)
 
 ### Bug fixes

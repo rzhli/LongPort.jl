@@ -172,7 +172,7 @@ Reference: https://open.longportapp.com/zh-CN/docs/refresh-token-api
 function refresh_token(config::Config.Settings, expired_at::String)::Dict
     try
         params = Dict("expired_at" => expired_at)
-        result = ApiResponse(get(config, "/v1/token/refresh"; params=params))
+        result = ApiResponse(http_get(config, "/v1/token/refresh"; params=params))
         return result.data
     catch e
         @error "刷新Token失败" exception=(e, catch_backtrace())
@@ -194,7 +194,7 @@ Returns:
 """
 function get_otp(config::Config.Settings)::NamedTuple{(:otp, :limit, :online), Tuple{String, Int, Int}}
     try
-        resp = ApiResponse(get(config, "/v1/socket/token"))
+        resp = ApiResponse(http_get(config, "/v1/socket/token"))
         if resp.code == 0
             return (
                 otp = resp.data.otp,
