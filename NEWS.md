@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.5.1 (2026-05-03)
+
+### Bug fixes
+
+- **消息循环立即崩溃**：`v0.5.0` 在 `Client.jl::start_message_loop` 里用 `get(client.pending, request_id, nothing)` 派发响应。但 `Client.jl:148` 早就定义了一个 `get(config::Config.Settings, path::String; params)` HTTP 辅助函数，在 `Client` 模块内屏蔽了 `Base.get`。结果认证响应一到就抛 `MethodError`，连接直接断掉。修：把 4 个 HTTP 辅助函数从 `get`/`post`/`put`/`delete` 改名为 `http_get`/`http_post`/`http_put`/`http_delete`，停止屏蔽 `Base` 名字（julia-style 第 18 条）；同步更新 `Trade.jl` 和 `Quote.jl` 的两处 `Client.get` 调用点。这些函数都不在 `LongBridge` 顶层导出，仅供内部使用。
+
 ## v0.5.0 (2026-05-03)
 
 ### Bug Fixes

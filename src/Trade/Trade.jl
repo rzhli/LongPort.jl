@@ -127,13 +127,13 @@ end
                 decoder = PB.ProtoDecoder(IOBuffer(resp_body))
                 PB.decode(decoder, UnsubResponse)
             elseif cmd isa HttpGetCmd
-                ApiResponse(Client.get(inner.config, cmd.path; params = cmd.params))
+                ApiResponse(Client.http_get(inner.config, cmd.path; params = cmd.params))
             elseif cmd isa HttpPostCmd
-                ApiResponse(Client.post(inner.config, cmd.path; body = cmd.body))
+                ApiResponse(Client.http_post(inner.config, cmd.path; body = cmd.body))
             elseif cmd isa HttpPutCmd
-                ApiResponse(Client.put(inner.config, cmd.path; body = cmd.body))
+                ApiResponse(Client.http_put(inner.config, cmd.path; body = cmd.body))
             elseif cmd isa HttpDeleteCmd
-                ApiResponse(Client.delete(inner.config, cmd.path; params = cmd.params))
+                ApiResponse(Client.http_delete(inner.config, cmd.path; params = cmd.params))
             end
         catch e
             @error "Failed to handle command" command = typeof(cmd) exception = (e, catch_backtrace())

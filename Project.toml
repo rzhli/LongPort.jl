@@ -2,7 +2,7 @@ name = "LongBridge"
 uuid = "d6178d20-a635-452c-a447-f7a195f79261"
 keywords = ["LongBridge", "openapi", "sdk", "finance"]
 license = "MIT"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["rzhli <tayuebuliuhen@gmail.com>"]
 description = "A Julia library for LongBridge Open API"
 

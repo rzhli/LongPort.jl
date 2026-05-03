@@ -205,13 +205,13 @@ function handle_command(inner::InnerQuoteContext, cmd::AbstractCommand)
             end
         elseif cmd isa HttpGetCmd
             # Handle HTTP GET requests
-            Client.get(inner.config, cmd.path; params=cmd.params)
+            Client.http_get(inner.config, cmd.path; params=cmd.params)
         elseif cmd isa HttpPostCmd
-            Client.post(inner.config, cmd.path; body=cmd.body)
+            Client.http_post(inner.config, cmd.path; body=cmd.body)
         elseif cmd isa HttpPutCmd
-            Client.put(inner.config, cmd.path; body=cmd.body)
+            Client.http_put(inner.config, cmd.path; body=cmd.body)
         elseif cmd isa HttpDeleteCmd
-            Client.delete(inner.config, cmd.path; params=cmd.params)
+            Client.http_delete(inner.config, cmd.path; params=cmd.params)
         end
     catch e
         @error "Failed to handle command" command=typeof(cmd) exception=(e, catch_backtrace())

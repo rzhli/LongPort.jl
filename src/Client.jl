@@ -145,16 +145,16 @@ function _http_request(config::Config.Settings, method::String, path::String;
     end
 end
 
-get(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
+http_get(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
     _http_request(config, "GET", path; params)
 
-post(config::Config.Settings, path::String; body::Dict=Dict()) =
+http_post(config::Config.Settings, path::String; body::Dict=Dict()) =
     _http_request(config, "POST", path; body)
 
-put(config::Config.Settings, path::String; body::Dict=Dict()) =
+http_put(config::Config.Settings, path::String; body::Dict=Dict()) =
     _http_request(config, "PUT", path; body)
 
-delete(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
+http_delete(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
     _http_request(config, "DELETE", path; params)
 
 """
