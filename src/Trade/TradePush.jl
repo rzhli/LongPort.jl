@@ -6,91 +6,45 @@ Trade Push Event Handler Module
 """
 module TradePush
 
-    using ProtoBuf
-    using ..TradeProtocol
-    using ..Client
-    using ..Config
-    using ..Constant
+    using JSON3
+    using ..TradeProtocol: Notification, PushOrderChanged, ContentType
 
-    export Callbacks, PushEvent, handle_push_event!, subscribe, unsubscribe, PushOrderChanged
-
-    # 推送事件基类
-    abstract type PushEvent end
-
-    """
-    订单回报推送
-    """
-    struct PushOrderChanged <: PushEvent
-        order_id::String
-        status::Int32
-        sub_status::Int32
-        submitted_price::String
-        submitted_quantity::Int64
-        executed_quantity::Int64
-        executed_price::String
-        trigger_price::String
-        msg::String
-        tag::Int32
-        triggered_at::Int64
-        updated_at::Int64
-        last_share::String
-        last_price::String
-
-        function PushOrderChanged(data::PushOrderChanged)
-            new(
-                data.order_id,
-                data.status,
-                data.sub_status,
-                data.submitted_price,
-                data.submitted_quantity,
-                data.executed_quantity,
-                data.executed_price,
-                data.trigger_price,
-                data.msg,
-                data.tag,
-                data.triggered_at,
-                data.updated_at,
-                data.last_share,
-                data.last_price,
-            )
-        end
-    end
+    export Callbacks, set_on_order_changed!, handle_push_event!
 
     """
     回调函数存储结构
-    参照Python版本的Callbacks结构
     """
     mutable struct Callbacks
-        on_order_changed::Union{Function,Nothing}
+        on_order_changed::Union{Function, Nothing}
 
-        function Callbacks()
-            new(nothing)
-        end
+        Callbacks() = new(nothing)
     end
 
-    """
-    设置订单变更回调函数
-    """
-    function set_on_order_changed!(callbacks::Callbacks, callback::Function)
-        callbacks.on_order_changed = callback
-    end
+    set_on_order_changed!(callbacks::Callbacks, callback) =
+        (callbacks.on_order_changed = callback; callbacks)
 
     """
-    处理推送事件
-    参照Python版本的handle_push_event函数
+    处理推送事件 — 由 Trade.jl 的 ws.on_push 在收到 CMD_NOTIFY 时调用。
+
+    服务器以 JSON 编码 PushOrderChanged 放在 Notification.data 中（content_type
+    = CONTENT_JSON）。其它 content_type 暂不处理。
     """
     function handle_push_event!(cb::Callbacks, n::Notification)
-        if n.topic == "private" && n.content_type == CONTENT_PROTO
-            if !isnothing(cb.on_order_changed)
-                try
-                    order_changed = PB.decode(PushOrderChanged(), n.data)
-                    cb.on_order_changed(PushOrderChanged(order_changed))
-                catch e
-                    @error "订单变更回调函数执行失败" exception = e
-                end
+        if n.topic != "private"
+            @debug "忽略非 private topic 的 trade 推送" topic=n.topic
+            return
+        end
+
+        if n.content_type == ContentType.CONTENT_JSON
+            isnothing(cb.on_order_changed) && return
+            try
+                order = JSON3.read(String(n.data), PushOrderChanged)
+                Base.invokelatest(cb.on_order_changed, order)
+            catch e
+                @error "订单变更回调函数执行失败" exception=(e, catch_backtrace())
             end
         else
-            @warn "未知的推送事件类型" n
+            @debug "未支持的 trade 推送 content_type" n.content_type
         end
     end
 

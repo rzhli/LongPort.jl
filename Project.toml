@@ -2,7 +2,7 @@ name = "LongBridge"
 uuid = "d6178d20-a635-452c-a447-f7a195f79261"
 keywords = ["LongBridge", "openapi", "sdk", "finance"]
 license = "MIT"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["rzhli <tayuebuliuhen@gmail.com>"]
 description = "A Julia library for LongBridge Open API"
 
@@ -15,10 +15,10 @@ EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProtoBuf = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
@@ -33,10 +33,10 @@ EnumX = "1"
 HTTP = "1"
 JSON3 = "1"
 Logging = "1"
+PrecompileTools = "1.3.3"
 Printf = "1.11"
 ProtoBuf = "1"
 Random = "1.11.0"
-Revise = "3.9.0"
 SHA = "0.7"
 StructTypes = "1.11.0"
 TOML = "1"
@@ -45,6 +45,7 @@ julia = "1.10"
 
 [extras]
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Revise"]
+test = ["Revise", "Test"]

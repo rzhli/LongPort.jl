@@ -6,7 +6,7 @@ module Config
     using ..Errors: LongBridgeError
     using ..OAuth: OAuthHandle, access_token as oauth_access_token
 
-    export config, from_toml, from_oauth
+    export Settings, config, from_toml, from_oauth
 
     """
     Configuration options for Longport SDK
@@ -23,8 +23,8 @@ module Config
         enable_print_quote_packages: Enable printing the opened quote packages when connected to the server
         log_path: Set the path of the log files
     """
-    
-    mutable struct config
+
+    mutable struct Settings
         app_key::String
         app_secret::String
         access_token::String
@@ -37,7 +37,7 @@ module Config
         auth_mode::Symbol          # :apikey or :oauth
         oauth::Union{Nothing, OAuthHandle}
 
-        function config(
+        function Settings(
             app_key::String,
             app_secret::String,
             access_token::String,
@@ -64,6 +64,9 @@ module Config
         end
     end
 
+    # Backwards-compat alias for the old lowercase name.
+    const config = Settings
+
     """
     Create a new `config` from TOML configuration file
 
@@ -75,7 +78,7 @@ module Config
     """
     function from_toml(path::String)
         if !isfile(path)
-            throw(LongBridgeException("Config file not found: $path"))
+            throw(LongBridgeError(404, "Config file not found: $path"))
         end
         
         # URLs - use Constant defaults
@@ -89,7 +92,7 @@ module Config
         required_keys = ["app_key", "app_secret", "access_token"]
         for key in required_keys
             if !haskey(config_dict, key)
-                throw(LongBridgeException("Missing required config key: $key"))
+                throw(LongBridgeError(400, "Missing required config key: $key"))
             end
         end
         
@@ -136,7 +139,7 @@ module Config
             end
         end
         
-        config(
+        Settings(
             app_key,
             app_secret,
             access_token,
@@ -170,7 +173,7 @@ module Config
             end
         end
         
-        throw(LongBridgeException("Config file not found. Please create config.toml in one of these locations: $(join(config_paths, ", "))"))
+        throw(LongBridgeError(404, "Config file not found. Please create config.toml in one of these locations: $(join(config_paths, ", "))"))
     end
 
     """
@@ -194,7 +197,7 @@ module Config
         language::Language.T = Language.ZH_CN,
         enable_overnight::Bool = true
     )
-        cfg = config(
+        cfg = Settings(
             oauth_handle.client_id,   # app_key = client_id
             "",                        # app_secret not needed for OAuth
             "",                        # access_token resolved dynamically

@@ -32,9 +32,9 @@ module Trade
     end
 
 mutable struct InnerTradeContext
-    config::Config.config
+    config::Config.Settings
     ws_client::Union{Client.WSClient,Nothing}
-    command_ch::Channel{Any}
+    command_ch::Channel{AbstractCommand}
     core_task::Union{Task,Nothing}
     callbacks::Callbacks
     subscriptions::Set{String}
@@ -56,7 +56,7 @@ end
                     (cmd, body) -> begin
                         command = Command.T(cmd)
                         if command == Command.CMD_NOTIFY
-                            n = PB.decode(IOBuffer(body), Notification)
+                            n = PB.decode(PB.ProtoDecoder(IOBuffer(body)), Notification)
                             handle_push_event!(inner.callbacks, n)
                         else
                             @warn "Unknown trade push command" cmd = cmd
@@ -91,7 +91,7 @@ end
             catch e
                 if e isa InvalidStateException && e.state == :closed
                     should_run = false
-                elseif e isa LongportError && e.code == "ws-disconnected"
+                elseif e isa LongBridgeError && occursin("WebSocket", e.message)
                     Client.full_reconnect!(inner.ws_client)
                 else
                     @error "Trade core actor failed" exception = (e, catch_backtrace())
@@ -145,8 +145,8 @@ end
         end
     end
 
-    function TradeContext(config::Config.config)
-        command_ch = Channel{Any}(32)
+    function TradeContext(config::Config.Settings)
+        command_ch = Channel{AbstractCommand}(32)
 
         inner = InnerTradeContext(config, nothing, command_ch, nothing, Callbacks(), Set{String}())
         ctx = TradeContext(Arc(inner))
@@ -222,7 +222,7 @@ end
         )
     end
 
-    function set_on_order_changed(ctx::TradeContext, cb::Function); TradePush.set_on_order_changed!(ctx.inner.callbacks, cb); end
+    set_on_order_changed(ctx::TradeContext, cb) = TradePush.set_on_order_changed!(ctx.inner.callbacks, cb)
 
     function subscribe(ctx::TradeContext, topics::Vector{TopicType.T})
         ch = Channel(1)

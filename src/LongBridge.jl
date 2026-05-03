@@ -1,7 +1,7 @@
-__precompile__()
 module LongBridge
 
     using TOML, Dates
+    using PrecompileTools: @setup_workload, @compile_workload
 
     # Version
     const VERSION = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))["version"]
@@ -50,7 +50,7 @@ module LongBridge
            VERSION
 
     # --- Config ---
-    export config, from_oauth                                  # 配置加载
+    export Settings, config, from_oauth                        # 配置加载（config 是 Settings 的兼容别名）
 
     # --- OAuth ---
     export OAuthBuilder, OAuthHandle, OAuthToken, build
@@ -114,5 +114,33 @@ module LongBridge
            margin_ratio, estimate_max_purchase_quantity
     # 推送
     export set_on_order_changed
+
+    # ==================== Precompile workload ====================
+    # Force compilation of the most-used construction paths so a fresh REPL
+    # session can hit the network within the first second instead of paying
+    # several seconds of inference on the first call.
+    @setup_workload begin
+        @compile_workload begin
+            # Config: both auth modes — exercises the constructor + alias.
+            cfg = Config.Settings(
+                "k", "s", "t", DateTime(2099, 1, 1);
+                http_url = "https://example.test",
+                quote_ws_url = "wss://example.test",
+                trade_ws_url = "wss://example.test",
+            )
+            cfg.auth_mode = :apikey
+
+            # OAuth: build a handle without doing real auth.
+            tok = OAuth.OAuthToken("k", "a", nothing, UInt64(0))
+            OAuth.is_expired(tok)
+            OAuth.expires_soon(tok)
+
+            # Errors path
+            try
+                throw(Errors.LongBridgeError(0, "warm"))
+            catch
+            end
+        end
+    end
 
 end # module LongBridge

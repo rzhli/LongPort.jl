@@ -77,7 +77,6 @@ module QuoteProtocol
         PushBrokersData = 103           # 推送经纪队列
         PushTradeData = 104             # 推送成交明细
     end
-    show(io::IO, x::QuoteCommand.T) = print(io, Symbol(x))
 
     # 行情订阅类型
     @enumx SubType begin
@@ -87,7 +86,6 @@ module QuoteProtocol
         BROKERS = 3
         TRADE = 4
     end
-    show(io::IO, x::SubType.T) = print(io, Symbol(x))
 
     # 交易状态
     @enumx TradeStatus begin
@@ -103,7 +101,6 @@ module QuoteProtocol
         WarrantPrepareList = 9
         SuspendTrade = 10
     end
-    show(io::IO, x::TradeStatus.T) = print(io, Symbol(x))
 
     # 交易时段
     @enumx TradeSession begin
@@ -113,14 +110,12 @@ module QuoteProtocol
         OvernightTrade = 3         # 夜盘
         All = 4
     end
-    show(io::IO, x::TradeSession.T) = print(io, Symbol(x))
 
     # 复权类型
     @enumx AdjustType begin
         NO_ADJUST = 0
         FORWARD_ADJUST = 1
     end
-    show(io::IO, x::AdjustType.T) = print(io, Symbol(x))
 
     # K线周期
     @enumx CandlePeriod begin
@@ -144,7 +139,6 @@ module QuoteProtocol
         QUARTER = 3500
         YEAR = 4000
     end
-    show(io::IO, x::CandlePeriod.T) = print(io, Symbol(x))
 
     # 交易方向
     @enumx TradeDirection begin
@@ -152,14 +146,12 @@ module QuoteProtocol
         Down = 1
         Up = 2
     end
-    show(io::IO, x::TradeDirection.T) = print(io, Symbol(x))
 
     # 推送行情标签
     @enumx PushQuoteTag begin
         Normal = 0              # 实时行情
         Eod = 1                 # 日终数据
     end
-    show(io::IO, x::PushQuoteTag.T) = print(io, Symbol(x))
 
     # 计算指标
     @enumx CalcIndex begin
@@ -205,7 +197,6 @@ module QuoteProtocol
         CALCINDEX_VEGA = 39
         CALCINDEX_RHO = 40
     end
-    show(io::IO, x::CalcIndex.T) = print(io, Symbol(x))
 
     # 证券板块
     @enumx SecurityBoard begin
@@ -235,7 +226,6 @@ module QuoteProtocol
         STI              = 23 # 新加坡海峡指数
         SGSector         = 24 # 新加坡行业概念
     end
-    show(io::IO, x::SecurityBoard.T) = print(io, Symbol(x))
 
     @enumx FilterWarrantExpiryDate begin
         LT_3 = 1
@@ -243,20 +233,17 @@ module QuoteProtocol
         Between_6_12 = 3
         GT_12 = 4
     end
-    show(io::IO, x::FilterWarrantExpiryDate.T) = print(io, Symbol(x))
 
     @enumx FilterWarrantInOutBoundsType begin
         In = 1
         Out = 2
     end
-    show(io::IO, x::FilterWarrantInOutBoundsType.T) = print(io, Symbol(x))
 
     @enumx WarrantStatus begin
         Suspend = 2
         PrepareList = 3
         Normal = 4
     end
-    show(io::IO, x::WarrantStatus.T) = print(io, Symbol(x))
 
     """
     Warrant type
@@ -339,7 +326,6 @@ module QuoteProtocol
         StoppedStock = 23            # 停售股票（常规交易）
         UnknownTradeType = 24
     end
-    show(io::IO, x::TradeType.T) = print(io, Symbol(x))
 
     function trade_type_from_string(s::String, symbol::String)
         market = uppercase(last(split(symbol, '.')))
@@ -817,14 +803,12 @@ module QuoteProtocol
         QUERY_BY_OFFSET = 1
         QUERY_BY_DATE = 2
     end
-    show(io::IO, x::HistoryCandlestickQueryType.T) = print(io, Symbol(x))
 
     # 查询方向
     @enumx Direction begin
         BACKWARD = 0  # 老数据，从最新的数据往历史数据翻页
         FORWARD = 1   # 新数据，从当前数据往最新数据翻页
     end
-    show(io::IO, x::Direction.T) = print(io, Symbol(x))
 
     # K线数据
     struct Candlestick

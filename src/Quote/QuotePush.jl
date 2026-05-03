@@ -1,10 +1,10 @@
 module QuotePush
 
-    using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, PushTrade
+    using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, PushTrade, Candlestick
     using ..Utils: to_namedtuple
 
-    export PushEvent, PushEventDetail, handle_push_event, Callbacks, handle_quote, handle_depth, 
-           handle_brokers, handle_trades
+    export PushEvent, PushEventDetail, handle_push_event, Callbacks, handle_quote, handle_depth,
+           handle_brokers, handle_trades, handle_candlestick
 
     """
     Push event detail types - matching Python SDK
@@ -14,6 +14,7 @@ module QuotePush
         DepthEvent = 2
         BrokersEvent = 3
         TradeEvent = 4
+        CandlestickEvent = 5
     end
 
     """
@@ -35,8 +36,9 @@ module QuotePush
         depth::Union{Function, Nothing}
         brokers::Union{Function, Nothing}
         trades::Union{Function, Nothing}
+        candlestick::Union{Function, Nothing}
 
-        Callbacks() = new(nothing, nothing, nothing, nothing)
+        Callbacks() = new(nothing, nothing, nothing, nothing, nothing)
     end
 
     """
@@ -52,6 +54,8 @@ module QuotePush
                 handle_brokers(callbacks, event.symbol, event.data)
             elseif event.detail_type == TradeEvent
                 handle_trades(callbacks, event.symbol, event.data)
+            elseif event.detail_type == CandlestickEvent
+                handle_candlestick(callbacks, event.symbol, event.data)
             end
         catch e
             @error "Error handling push event" symbol=event.symbol detail_type=event.detail_type exception=e
@@ -111,31 +115,27 @@ module QuotePush
     end
 
     """
-    Set Quote callback function
+    Handle candlestick push event.
+
+    Note: the server-side push pipeline for candlestick events is not yet wired
+    in this SDK (no PushCandlestickData command code is decoded). The hook is
+    provided so user code that registers a callback compiles, and so future
+    integration only needs to call `handle_candlestick` from the dispatcher.
     """
-    function set_on_quote!(callbacks::Callbacks, callback::Function)
-        callbacks.realtime_quote = callback
+    function handle_candlestick(callbacks::Callbacks, symbol::String, candle::Candlestick)
+        if !isnothing(callbacks.candlestick)
+            try
+                Base.invokelatest(callbacks.candlestick, symbol, candle)
+            catch e
+                @error "Error in candlestick callback" symbol=symbol exception=e
+            end
+        end
     end
 
-    """
-    Set depth callback function
-    """
-    function set_on_depth!(callbacks::Callbacks, callback::Function)
-        callbacks.depth = callback
-    end
-
-    """
-    Set brokers callback function
-    """
-    function set_on_brokers!(callbacks::Callbacks, callback::Function)
-        callbacks.brokers = callback
-    end
-
-    """
-    Set trades callback function
-    """
-    function set_on_trades!(callbacks::Callbacks, callback::Function)
-        callbacks.trades = callback
-    end
+    set_on_quote!(callbacks::Callbacks, callback) = (callbacks.realtime_quote = callback; callbacks)
+    set_on_depth!(callbacks::Callbacks, callback) = (callbacks.depth = callback; callbacks)
+    set_on_brokers!(callbacks::Callbacks, callback) = (callbacks.brokers = callback; callbacks)
+    set_on_trades!(callbacks::Callbacks, callback) = (callbacks.trades = callback; callbacks)
+    set_on_candlestick!(callbacks::Callbacks, callback) = (callbacks.candlestick = callback; callbacks)
 
 end # module QuotePush

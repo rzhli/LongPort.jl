@@ -77,8 +77,8 @@ module Utils
                     # Convert protobuf timestamp (seconds) to DateTime
                     return to_china_time(field_val)
                 # Recursively convert nested objects
-                elseif (isstructtype(typeof(field_val)) && !(field_val isa Union{String, Date, DateTime, Tuple})) ||
-                    (field_val isa JSON3.Object || field_val isa JSON3.Array)
+                elseif isstructtype(typeof(field_val)) && !(field_val isa Union{String, Date, DateTime, Tuple}) ||
+                    field_val isa JSON3.Object || field_val isa JSON3.Array
                     return to_namedtuple(field_val)
                 else
                     return field_val

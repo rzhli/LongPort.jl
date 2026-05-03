@@ -36,7 +36,7 @@ Generate API signature for authentication. Returns `nothing` in OAuth mode (empt
 """
 function sign(
     method::String, path::String, headers::Dict{String, String},
-    params::String, body::String, config::Config.config
+    params::String, body::String, config::Config.Settings
     )::Union{String, Nothing}
 
     # OAuth mode: no HMAC signature needed
@@ -100,7 +100,7 @@ function _build_query_string(params::Dict{String,Any})
 end
 
 # 通用 HTTP 请求函数
-function _http_request(config::Config.config, method::String, path::String;
+function _http_request(config::Config.Settings, method::String, path::String;
                        params::Dict{String,Any}=Dict{String,Any}(),
                        body::Union{Dict,Nothing}=nothing)
     try
@@ -145,20 +145,20 @@ function _http_request(config::Config.config, method::String, path::String;
     end
 end
 
-get(config::Config.config, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
+get(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
     _http_request(config, "GET", path; params)
 
-post(config::Config.config, path::String; body::Dict=Dict()) =
+post(config::Config.Settings, path::String; body::Dict=Dict()) =
     _http_request(config, "POST", path; body)
 
-put(config::Config.config, path::String; body::Dict=Dict()) =
+put(config::Config.Settings, path::String; body::Dict=Dict()) =
     _http_request(config, "PUT", path; body)
 
-delete(config::Config.config, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
+delete(config::Config.Settings, path::String; params::Dict{String,Any}=Dict{String,Any}()) =
     _http_request(config, "DELETE", path; params)
 
 """
-refresh_token(config::Config.config, expired_at::String) -> Dict
+refresh_token(config::Config.Settings, expired_at::String) -> Dict
 
 Refresh the access token using the refresh token API
 Reference: https://open.longportapp.com/zh-CN/docs/refresh-token-api
@@ -169,7 +169,7 @@ Reference: https://open.longportapp.com/zh-CN/docs/refresh-token-api
 # Returns
 - Dictionary containing new token information
 """
-function refresh_token(config::Config.config, expired_at::String)::Dict
+function refresh_token(config::Config.Settings, expired_at::String)::Dict
     try
         params = Dict("expired_at" => expired_at)
         result = ApiResponse(get(config, "/v1/token/refresh"; params=params))
@@ -181,7 +181,7 @@ function refresh_token(config::Config.config, expired_at::String)::Dict
 end
 
 """
-get_otp(config::Config.config) -> NamedTuple
+get_otp(config::Config.Settings) -> NamedTuple
 
 Get the socket OTP(One Time Password) and connection info
 Reference: https://open.longportapp.com/zh-CN/docs/socket-token-api
@@ -192,7 +192,7 @@ Returns:
   - limit: Int - Total connection limit
   - online: Int - Current online connections
 """
-function get_otp(config::Config.config)::NamedTuple{(:otp, :limit, :online), Tuple{String, Int, Int}}
+function get_otp(config::Config.Settings)::NamedTuple{(:otp, :limit, :online), Tuple{String, Int, Int}}
     try
         resp = ApiResponse(get(config, "/v1/socket/token"))
         if resp.code == 0
@@ -214,7 +214,7 @@ end
 
 """
 WSClient
-    
+
 WebSocket 客户端，用于与长桥服务器建立长连接。
 
 # Fields
@@ -222,7 +222,8 @@ WebSocket 客户端，用于与长桥服务器建立长连接。
 - `url::String`: 连接 URL
 - `connected::Bool`: 连接状态（包括认证成功）
 - `seq_id::UInt32`: 序列号
-- `pending_responses::Dict{String, Tuple{UInt8, Vector{UInt8}}}`: 待处理响应
+- `pending::Dict{UInt32, Channel{Tuple{UInt8, Vector{UInt8}}}}`: 待响应通道，按 request_id 索引
+- `send_lock::ReentrantLock`: 序列化发送 + 通道注册
 - `auth_data::Union{Nothing,Vector{UInt8}}`: 认证数据
 """
 mutable struct WSClient
@@ -231,22 +232,26 @@ mutable struct WSClient
     connected::Bool
     seq_id::UInt32
     session_id::Union{String, Nothing}
-    pending_responses::Dict{String, Tuple{UInt8, Vector{UInt8}}}
+    pending::Dict{UInt32, Channel{Tuple{UInt8, Vector{UInt8}}}}
+    send_lock::ReentrantLock
+    auth_event::Threads.Event
     auth_data::Union{Nothing,Vector{UInt8}}
     on_push::Union{Function, Nothing}
     heartbeat_task::Union{Nothing, Task}
     reconnect_attempts::Int
     reconnect_task::Union{Nothing, Task}
-    config::Config.config
+    config::Config.Settings
 
-    function WSClient(url::String, config::Config.config)
+    function WSClient(url::String, config::Config.Settings)
         new(
             nothing,                # ws
             url,                    # url
             false,                  # connected (只有认证成功后才为true)
             UInt32(1),              # seq_id
             nothing,                # session_id
-            Dict{String, Tuple{UInt8, Vector{UInt8}}}(), # pending_responses
+            Dict{UInt32, Channel{Tuple{UInt8, Vector{UInt8}}}}(), # pending
+            ReentrantLock(),        # send_lock
+            Threads.Event(),        # auth_event (set after successful auth)
             nothing,                # auth_data
             nothing,
             nothing,                # heartbeat_task
@@ -266,49 +271,49 @@ function connect!(client::WSClient)
     if client.connected
         return
     end
-    
+
     @info "正在连接到 WS 服务器: $(client.url)"
     base_url = client.url
 
     query_params = [
-        "version=$(Constant.PROTOCOL_VERSION)", 
-        "codec=$(Constant.CODEC_TYPE)", 
+        "version=$(Constant.PROTOCOL_VERSION)",
+        "codec=$(Constant.CODEC_TYPE)",
         "platform=$(Constant.PLATFORM_TYPE)"
     ]
 
     full_url = base_url * "?" * join(query_params, "&")
-    
+
+    # Reset auth signal in case this is a reconnect
+    client.auth_event = Threads.Event()
+
     # 创建WebSocket连接
     ws_task = @async begin
         WebSockets.open(full_url; nagle=false, quickack=true) do ws
             client.ws = ws
             client.seq_id = UInt32(1)
-            
-            # @info "WebSocket 物理连接成功，开始认证..."
-            # @info "发送认证包" auth_data_length=length(client.auth_data)
+
             send_request_packet(client, COMMAND_CODE_AUTH, client.auth_data)
-            # @info "认证包已发送，等待响应..."
-            
+
             # 启动消息处理循环
             start_message_loop(client)
-            
+
             # 保持连接开放，直到被外部关闭
             while !isnothing(client.ws) && isopen(client.ws.io)
                 sleep(0.1)
             end
         end
     end
-    
-    # 等待认证完成（而不是仅仅物理连接）
-    max_wait = 30.0
-    wait_interval = 0.1
-    elapsed = 0.0
-    
-    while !client.connected && elapsed < max_wait
-        sleep(wait_interval)
-        elapsed += wait_interval
+
+    # 等待认证完成（最多 30s）。
+    # 在认证响应到达消息循环时，notify(auth_event) 会立即唤醒此处。
+    timer = Timer(30.0)
+    waiter = @async (try; wait(timer); notify(client.auth_event); catch; end)
+    try
+        wait(client.auth_event)
+    finally
+        close(timer)
     end
-    
+
     if !client.connected
         @lperror(408, "WebSocket连接或认证超时")
     end
@@ -361,50 +366,32 @@ function send_request_packet(client::WSClient, cmd::UInt8, body::Vector{UInt8})
         throw(ArgumentError("WebSocket物理连接不存在"))
     end
 
-    try
-        # 构建数据包
+    lock(client.send_lock) do
         request_id = client.seq_id
-        client.seq_id += 1
-
-        # 构建数据包头部
-        # 根据长桥协议：[header(1)] + [cmd_code(1)] + [request_id(4)] + [timeout(2)] + [body_len(3)] + [body]
-        # Pre-size IOBuffer: 11 bytes header + body length
-        body_len = length(body)
-        packet = IOBuffer(sizehint = 11 + body_len)
-
-        # Header byte: type=1 (request), verify=0, gzip=0, reserve=0
-        # Format: [reserve(2)] + [gzip(1)] + [verify(1)] + [type(4)]
-        write(packet, 0x01)  # header_byte
-
-        # Command code (1 byte)
-        write(packet, cmd)
-
-        # Request ID (4 bytes, big-endian)
-        write(packet, hton(request_id))
-
-        # Timeout (2 bytes, big-endian) - 30 seconds default
-        write(packet, hton(UInt16(REQUEST_TIMEOUT * 1000)))
-
-        # Body length (3 bytes, big-endian) - write directly to avoid allocation
-        write(packet, UInt8((body_len >> 16) & 0xFF))
-        write(packet, UInt8((body_len >> 8) & 0xFF))
-        write(packet, UInt8(body_len & 0xFF))
-
-        # Body
-        write(packet, body)
-
-        # 发送数据包
-        packet_data = take!(packet)
-        send(client.ws, packet_data)
-
-        @debug "已发送请求数据包" cmd=cmd request_id=request_id body_len=body_len
-
+        client.seq_id += UInt32(1)
+        _write_request_frame(client, cmd, body, request_id)
         return request_id
-
-    catch e
-        @error "发送请求数据包失败" exception=(e, catch_backtrace())
-        rethrow(e)
     end
+end
+
+# Internal: build and ship a single request frame. Caller must hold send_lock.
+function _write_request_frame(client::WSClient, cmd::UInt8, body::Vector{UInt8}, request_id::UInt32)
+    body_len = length(body)
+    packet = IOBuffer(sizehint = 11 + body_len)
+
+    # Header byte: type=1 (request), verify=0, gzip=0, reserve=0
+    write(packet, 0x01)
+    write(packet, cmd)
+    write(packet, hton(request_id))
+    write(packet, hton(UInt16(REQUEST_TIMEOUT * 1000)))
+    write(packet, UInt8((body_len >> 16) & 0xFF))
+    write(packet, UInt8((body_len >> 8) & 0xFF))
+    write(packet, UInt8(body_len & 0xFF))
+    write(packet, body)
+
+    send(client.ws, take!(packet))
+    @debug "已发送请求数据包" cmd=cmd request_id=request_id body_len=body_len
+    return request_id
 end
 
 """
@@ -522,12 +509,22 @@ function start_message_loop(client::WSClient)
                                 @error "认证失败" status_code=status_code
                                 client.connected = false
                             end
+                            notify(client.auth_event)  # 唤醒 connect! 中的等待者
                         end
                         
-                        # 存储响应数据 (使用 string() 替代插值以提高效率)
-                        response_key = string("quote_response_", request_id)
-                        client.pending_responses[response_key] = (status_code, body)
-                        @debug "存储响应" response_key=response_key pending_keys=keys(client.pending_responses)
+                        # 派发响应到等待的 channel（如果有 ws_request 在等）
+                        ch = lock(client.send_lock) do
+                            get(client.pending, request_id, nothing)
+                        end
+                        if !isnothing(ch)
+                            try
+                                put!(ch, (status_code, body))
+                            catch e
+                                @debug "派发响应到通道失败（可能已超时关闭）" request_id=request_id exception=e
+                            end
+                        else
+                            @debug "无等待通道（可能为认证响应或孤儿响应）" request_id=request_id cmd=cmd
+                        end
                     elseif packet_type == 3  # Push packet
                         # Push格式: [header(1)] + [cmd_code(1)] + [body_len(3)] + [body]
                         if length(data) < 5
@@ -675,12 +672,12 @@ end
 # ==================== WebSocket Authentication ====================
 
 """
-create_auth_request(config::Config.config) -> Vector{UInt8}
+create_auth_request(config::Config.Settings) -> Vector{UInt8}
 
 Creates the serialized body for a WebSocket authentication request.
 Automatically gets OTP token for WebSocket authentication.
 """
-function create_auth_request(config::Config.config)::Vector{UInt8}
+function create_auth_request(config::Config.Settings)::Vector{UInt8}
     # 获取OTP令牌用于WebSocket认证
     otp_response = get_otp(config)
     
@@ -698,46 +695,62 @@ end
 
 # 使用已有WSClient的版本
 function ws_request(
-    client::WSClient, command_code::UInt8, request_body::Vector{UInt8}; 
+    client::WSClient, command_code::UInt8, request_body::Vector{UInt8};
     timeout::Float64 = REQUEST_TIMEOUT
     )::Vector{UInt8}
 
     if !client.connected
         throw(ArgumentError("WebSocket客户端未连接"))
     end
+    if isnothing(client.ws) || !isopen(client.ws.io)
+        throw(ArgumentError("WebSocket物理连接不存在"))
+    end
 
-    request_id = send_request_packet(client, command_code, request_body)
-    
-    # 等待响应 (使用 string() 替代插值以提高效率)
-    response_key = string("quote_response_", request_id)
-    start_time = time()
-    
-    while !haskey(client.pending_responses, response_key) && (time() - start_time) < timeout
-        sleep(0.01)
+    # 在持锁状态下：分配 seq_id、注册 channel、发送数据包。
+    # 这避免了响应在 send 完成与 register 之间到达造成的丢失。
+    ch = Channel{Tuple{UInt8, Vector{UInt8}}}(1)
+    request_id = lock(client.send_lock) do
+        rid = client.seq_id
+        client.seq_id += UInt32(1)
+        client.pending[rid] = ch
+        _write_request_frame(client, command_code, request_body, rid)
+        return rid
     end
-    
-    if !haskey(client.pending_responses, response_key)
-        throw(LongBridgeException("请求超时"))
+
+    # 等待响应或超时
+    timer = Timer(timeout) do _
+        # 超时后关闭 channel —— take! 会抛 InvalidStateException
+        isopen(ch) && close(ch)
     end
-    
-    status_code, response_body = pop!(client.pending_responses, response_key)
-    if status_code != 0
-        # 还需要进一步修改  status_code ∈ [0, 3, 7] ?
-        @debug "尝试解析错误响应" status_code=status_code response_body_length=length(response_body) response_body_hex=bytes2hex(response_body)
-        
-        # 检查response_body是否为空
-        if isempty(response_body)
-            throw(ArgumentError("空的响应体，无法解析错误信息"))
+
+    try
+        local status_code::UInt8
+        local response_body::Vector{UInt8}
+        try
+            status_code, response_body = take!(ch)
+        catch e
+            if e isa InvalidStateException
+                throw(LongBridgeError(408, "请求超时"))
+            end
+            rethrow(e)
         end
-        
-        err_proto = ControlProtocol.decode(response_body, ControlProtocol.Error)
-        business_code = err_proto.code
-        business_msg = err_proto.msg # Use the message from the decoded response
-        
-        err_msg = "API请求失败: (协议码=$status_code) - $business_msg"
-        @lperror(Int(business_code), err_msg, nothing, response_body)
+
+        if status_code != 0
+            @debug "尝试解析错误响应" status_code=status_code response_body_length=length(response_body) response_body_hex=bytes2hex(response_body)
+            if isempty(response_body)
+                throw(ArgumentError("空的响应体，无法解析错误信息"))
+            end
+            err_proto = ControlProtocol.decode(response_body, ControlProtocol.Error)
+            err_msg = "API请求失败: (协议码=$status_code) - $(err_proto.msg)"
+            @lperror(Int(err_proto.code), err_msg, nothing, response_body)
+        end
+        return response_body
+    finally
+        close(timer)
+        lock(client.send_lock) do
+            delete!(client.pending, request_id)
+        end
     end
-    return response_body
 end
 
 end # end of module Client

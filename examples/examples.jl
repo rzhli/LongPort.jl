@@ -3,7 +3,7 @@ LongBridge Julia SDK - Test Script
 (Tests functions individually using the new Actor-based API)
 """
 
-using LongBridge, Dates, Revise
+using LongBridge, Dates
 
 # 1. Use OAuth 2.0 (Recommended)
 # First  obtain client_id by:
@@ -79,7 +79,7 @@ end
 @time expiry_date = option_chain_expiry_date_list(ctx, "AAPL.US")
 
 ### 获取标的的期权链到期日期权标的列表 (返回空值，需开通OPRA美股期权行情权限？)
-@time info = option_chain_info_by_date(ctx, "AAPL.US", Date(2025-08-22))
+@time info = option_chain_info_by_date(ctx, "AAPL.US", Date(2025, 8, 22))
 
 ### 获取轮证发行商ID （DataFrame）
 @time resp = warrant_issuers(ctx)

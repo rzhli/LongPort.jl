@@ -62,20 +62,16 @@ end
 # --- Core Actor and Context Structs ---
 
 mutable struct InnerQuoteContext
-    config::Config.config
+    config::Config.Settings
     ws_client::Union{WSClient, Nothing}
     session_id::Union{String, Nothing}
-    command_ch::Channel{Any}
+    command_ch::Channel{AbstractCommand}
     core_task::Union{Task, Nothing}
     push_dispatcher_task::Union{Task, Nothing}
     callbacks::QuotePush.Callbacks
     subscriptions::Set{Tuple{Vector{String}, Vector{SubType.T}}}
 
     # Caches
-    cache_participants::SimpleCache{Vector{Any}}
-    cache_issuers::SimpleCache{Vector{Any}}
-    cache_option_chain_expiry_dates::CacheWithKey{String, Vector{Any}}
-    cache_option_chain_strike_info::CacheWithKey{Tuple{String, Any}, Vector{Any}}
     cache_trading_sessions::SimpleCache{DataFrame}
 
     # Realtime data store for subscribed data
@@ -95,7 +91,7 @@ end
 
 # --- Core Actor Logic ---
 
-function core_run(inner::InnerQuoteContext, push_tx::Channel)
+function core_run(inner::InnerQuoteContext, push_tx::Channel{Tuple{UInt8, Vector{UInt8}}})
     # @info "Quote core actor started."
     should_run = true
     reconnect_attempts = 0
@@ -146,7 +142,7 @@ function core_run(inner::InnerQuoteContext, push_tx::Channel)
             if e isa InvalidStateException && e.state == :closed
                 # @warn "Command channel closed, shutting down core actor."
                 should_run = false
-            elseif e isa LongBridgeException && occursin("WebSocket", e.message)
+            elseif e isa LongBridgeError && occursin("WebSocket", e.message)
                 @warn "Connection lost, attempting to reconnect..." exception=(e, catch_backtrace())
                 
                 # Attempt fast reconnect first
@@ -230,7 +226,7 @@ end
 
 # --- Push Dispatcher ---
 
-function dispatch_push_events(ctx::QuoteContext, push_rx::Channel)
+function dispatch_push_events(ctx::QuoteContext, push_rx::Channel{Tuple{UInt8, Vector{UInt8}}})
     # @info "Push event dispatcher started."
     store = ctx.inner.store
     for (cmd_code, body) in push_rx
@@ -275,11 +271,11 @@ This is the main entry point for using the quote API. It sets up the WebSocket c
 and the background processing task (Actor).
 
 # Arguments
-- `config::Config.config`: The configuration object.
+- `config::Config.Settings`: The configuration object.
 """
-function QuoteContext(config::Config.config)
-    command_ch = Channel{Any}(32)
-    push_ch = Channel{Any}(Inf)     # a `Channel` for receiving raw push events
+function QuoteContext(config::Config.Settings)
+    command_ch = Channel{AbstractCommand}(32)
+    push_ch = Channel{Tuple{UInt8, Vector{UInt8}}}(Inf)     # raw push events from WS
 
     inner = InnerQuoteContext(
         config,
@@ -291,10 +287,6 @@ function QuoteContext(config::Config.config)
         QuotePush.Callbacks(),
         Set{Tuple{Vector{String}, Vector{SubType.T}}}(),
         # Caches
-        SimpleCache{Vector{Any}}(1800.0),
-        SimpleCache{Vector{Any}}(1800.0),
-        CacheWithKey{String, Vector{Any}}(1800.0),
-        CacheWithKey{Tuple{String, Any}, Vector{Any}}(1800.0),
         SimpleCache{DataFrame}(7200.0),
         # Realtime store
         RealtimeStore{PushQuote, PushDepth, PushBrokers, Trade, Candlestick}(),
@@ -341,11 +333,11 @@ end
 # The callback functions below are used to process the data that the server pushes to us.
 # For example, after calling `subscribe` for quote data, you would use `set_on_quote`
 # to provide a function that will be executed each time a new quote arrives.
-function set_on_quote(ctx::QuoteContext, cb::Function); QuotePush.set_on_quote!(ctx.inner.callbacks, cb); end
-function set_on_depth(ctx::QuoteContext, cb::Function); QuotePush.set_on_depth!(ctx.inner.callbacks, cb); end
-function set_on_brokers(ctx::QuoteContext, cb::Function); QuotePush.set_on_brokers!(ctx.inner.callbacks, cb); end
-function set_on_trades(ctx::QuoteContext, cb::Function); QuotePush.set_on_trades!(ctx.inner.callbacks, cb); end
-function set_on_candlestick(ctx::QuoteContext, cb::Function); QuotePush.set_on_candlestick!(ctx.inner.callbacks, cb); end
+set_on_quote(ctx::QuoteContext, cb) = QuotePush.set_on_quote!(ctx.inner.callbacks, cb)
+set_on_depth(ctx::QuoteContext, cb) = QuotePush.set_on_depth!(ctx.inner.callbacks, cb)
+set_on_brokers(ctx::QuoteContext, cb) = QuotePush.set_on_brokers!(ctx.inner.callbacks, cb)
+set_on_trades(ctx::QuoteContext, cb) = QuotePush.set_on_trades!(ctx.inner.callbacks, cb)
+set_on_candlestick(ctx::QuoteContext, cb) = QuotePush.set_on_candlestick!(ctx.inner.callbacks, cb)
 
 # --- Data API ---
 

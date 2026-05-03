@@ -208,9 +208,9 @@ function authorize!(handle::OAuthHandle, open_url_fn::Function)
         "&scope=openapi"
     )
 
-    # Channel to receive the authorization code
-    code_ch = Channel{String}(1)
-    error_ch = Channel{String}(1)
+    # 单一结果通道，避免轮询多个 channel
+    # value: (:ok, code) on success, (:err, msg) on failure/timeout
+    result_ch = Channel{Tuple{Symbol, String}}(1)
 
     # Start callback server
     server = HTTP.serve!(
@@ -224,21 +224,21 @@ function authorize!(handle::OAuthHandle, open_url_fn::Function)
             err = get(params, "error", "")
 
             if !isempty(err)
-                put!(error_ch, err)
+                isopen(result_ch) && put!(result_ch, (:err, err))
                 return HTTP.Response(200, "Authorization failed: $err. You can close this window.")
             end
 
             if state != csrf_state
-                put!(error_ch, "CSRF state mismatch")
+                isopen(result_ch) && put!(result_ch, (:err, "CSRF state mismatch"))
                 return HTTP.Response(400, "CSRF state mismatch. Please try again.")
             end
 
             if isempty(code)
-                put!(error_ch, "No authorization code received")
+                isopen(result_ch) && put!(result_ch, (:err, "No authorization code received"))
                 return HTTP.Response(400, "No authorization code received.")
             end
 
-            put!(code_ch, code)
+            isopen(result_ch) && put!(result_ch, (:ok, code))
             return HTTP.Response(200, "Authorization successful! You can close this window.")
         end
         return HTTP.Response(404, "Not Found")
@@ -248,38 +248,22 @@ function authorize!(handle::OAuthHandle, open_url_fn::Function)
         # Open the URL for the user
         open_url_fn(auth_url)
 
-        # Wait for callback (with timeout)
-        auth_code = nothing
-        timer = Timer(AUTH_TIMEOUT)
-
-        @sync begin
-            @async begin
-                wait(timer)
-                if !isready(code_ch) && !isready(error_ch)
-                    put!(error_ch, "Authorization timed out after $(Int(AUTH_TIMEOUT)) seconds")
-                end
-            end
-
-            @async begin
-                if isready(error_ch) || isready(code_ch)
-                    # Already resolved
-                else
-                    # Wait for either channel
-                    while !isready(code_ch) && !isready(error_ch)
-                        sleep(0.1)
-                    end
-                end
-            end
+        # Race a timeout against the callback by putting an :err onto the same channel.
+        timer = Timer(AUTH_TIMEOUT) do _
+            isopen(result_ch) && put!(result_ch, (:err, "Authorization timed out after $(Int(AUTH_TIMEOUT)) seconds"))
         end
 
-        close(timer)
-
-        if isready(error_ch)
-            err = take!(error_ch)
-            throw(LongBridgeError(401, "OAuth authorization failed: $err", nothing))
+        kind, payload = try
+            take!(result_ch)
+        finally
+            close(timer)
         end
 
-        auth_code = take!(code_ch)
+        if kind === :err
+            throw(LongBridgeError(401, "OAuth authorization failed: $payload", nothing))
+        end
+
+        auth_code = payload
 
         # Exchange code for token
         resp = HTTP.post(
