@@ -137,7 +137,7 @@ disconnect!(ctx)
 ### Trading
 
 ```julia
-using LongBridge
+using LongBridge, Dates
 
 cfg = Config.from_toml()
 
@@ -147,29 +147,45 @@ ctx = TradeContext(cfg)
 # Get account balance
 resp = account_balance(ctx)
 
-# Get stock positions
-resp = stock_positions(ctx, ["700.HK"])
+# Get stock positions (optionally filter by symbol)
+resp = stock_positions(ctx)
+resp = stock_positions(ctx; symbol = "700.HK")
 
 # Get today's orders
 resp = today_orders(ctx)
 
-# Get historical orders
-resp = history_orders(ctx, "2023-01-01", "2023-02-01")
+# Get historical orders (date range via keyword args)
+resp = history_orders(ctx; start_at = Date(2024, 1, 1), end_at = Date(2024, 2, 1))
 
 # Get today's executions
 resp = today_executions(ctx)
 
 # Get historical executions
-resp = history_executions(ctx, "2023-01-01", "2023-02-01")
+resp = history_executions(ctx; start_at = Date(2024, 1, 1), end_at = Date(2024, 2, 1))
 
-# Submit an order
-resp = submit_order(ctx, "700.HK", OrderType.LO, Side.Buy, 100, 300.0)
+# Submit an order via SubmitOrderOptions
+resp = submit_order(
+    ctx, SubmitOrderOptions(
+        symbol = "700.HK",
+        order_type = OrderType.LO,
+        side = OrderSide.Buy,
+        submitted_quantity = 100,
+        time_in_force = TimeInForceType.Day,
+        submitted_price = 300.0,
+    )
+)
 
 # Modify an order
-resp = modify_order(ctx, "order_id", 100, 301.0)
+resp = replace_order(
+    ctx, ReplaceOrderOptions(
+        order_id = "709043056541253632",
+        submitted_quantity = 100,
+        submitted_price = 301.0,
+    )
+)
 
 # Cancel an order
-resp = cancel_order(ctx, "order_id")
+resp = cancel_order(ctx, "709043056541253632")
 
 # Disconnect
 disconnect!(ctx)
@@ -235,6 +251,7 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `set_on_depth(ctx, callback)`: Set the callback function for market depth pushes
 - `set_on_brokers(ctx, callback)`: Set the callback function for broker queue pushes
 - `set_on_trades(ctx, callback)`: Set the callback function for trade detail pushes
+- `set_on_candlestick(ctx, callback)`: Set the callback function for candlestick pushes
 - `subscribe(ctx, symbols, sub_types)`: Subscribe to quotes
 - `unsubscribe(ctx, symbols, sub_types)`: Unsubscribe from quotes
 
@@ -256,18 +273,22 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 
 ### Trading
 - `account_balance(ctx)`: Get account balance
-- `stock_positions(ctx, symbols)`: Get stock positions
-- `today_orders(ctx)`: Get today's orders
-- `history_orders(ctx, start_date, end_date)`: Get historical orders
-- `today_executions(ctx)`: Get today's executions
-- `history_executions(ctx, start_date, end_date)`: Get historical executions
-- `submit_order(ctx, symbol, order_type, side, quantity, price)`: Submit an order
-- `modify_order(ctx, order_id, quantity, price)`: Modify an order
+- `stock_positions(ctx; symbol)`: Get stock positions (optional symbol filter)
+- `fund_positions(ctx)`: Get fund positions
+- `today_orders(ctx; symbol, status, side)`: Get today's orders
+- `history_orders(ctx; symbol, status, side, start_at, end_at)`: Get historical orders
+- `today_executions(ctx; symbol)`: Get today's executions
+- `history_executions(ctx; symbol, start_at, end_at)`: Get historical executions
+- `order_detail(ctx, order_id)`: Get order detail
+- `submit_order(ctx, ::SubmitOrderOptions)`: Submit an order
+- `replace_order(ctx, ::ReplaceOrderOptions)`: Modify an order
 - `cancel_order(ctx, order_id)`: Cancel an order
+- `estimate_max_purchase_quantity(ctx, ::EstimateMaxPurchaseQuantityOptions)`: Estimate max purchase quantity
+- `cash_flow(ctx; start_at, end_at)`: Get cash flow records
+- `margin_ratio(ctx, symbol)`: Get margin ratio for a security
 - `set_on_order_changed(ctx, callback)`: Set the callback function for order status change pushes
-- `set_on_trade_changed(ctx, callback)`: Set the callback function for trade report pushes
-- `subscribe_trade(ctx, topics)`: Subscribe to trade pushes
-- `unsubscribe_trade(ctx, topics)`: Unsubscribe from trade pushes
+- `Trade.subscribe(ctx, topics::Vector{TopicType.T})`: Subscribe to trade pushes (e.g. `[TopicType.Private]`)
+- `Trade.unsubscribe(ctx, topics::Vector{TopicType.T})`: Unsubscribe from trade pushes
 
 ## License
 

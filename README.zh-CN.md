@@ -137,7 +137,7 @@ disconnect!(ctx)
 ### 交易
 
 ```julia
-using LongBridge
+using LongBridge, Dates
 
 cfg = Config.from_toml()
 
@@ -147,29 +147,45 @@ ctx = TradeContext(cfg)
 # 获取账户资金
 resp = account_balance(ctx)
 
-# 获取持仓
-resp = stock_positions(ctx, ["700.HK"])
+# 获取持仓（可按 symbol 过滤）
+resp = stock_positions(ctx)
+resp = stock_positions(ctx; symbol = "700.HK")
 
 # 获取今日订单
 resp = today_orders(ctx)
 
-# 获取历史订单
-resp = history_orders(ctx, "2023-01-01", "2023-02-01")
+# 获取历史订单（日期通过关键字参数传入）
+resp = history_orders(ctx; start_at = Date(2024, 1, 1), end_at = Date(2024, 2, 1))
 
 # 获取今日成交
 resp = today_executions(ctx)
 
 # 获取历史成交
-resp = history_executions(ctx, "2023-01-01", "2023-02-01")
+resp = history_executions(ctx; start_at = Date(2024, 1, 1), end_at = Date(2024, 2, 1))
 
-# 下单
-resp = submit_order(ctx, "700.HK", OrderType.LO, Side.Buy, 100, 300.0)
+# 下单（通过 SubmitOrderOptions 提交）
+resp = submit_order(
+    ctx, SubmitOrderOptions(
+        symbol = "700.HK",
+        order_type = OrderType.LO,
+        side = OrderSide.Buy,
+        submitted_quantity = 100,
+        time_in_force = TimeInForceType.Day,
+        submitted_price = 300.0,
+    )
+)
 
 # 修改订单
-resp = modify_order(ctx, "order_id", 100, 301.0)
+resp = replace_order(
+    ctx, ReplaceOrderOptions(
+        order_id = "709043056541253632",
+        submitted_quantity = 100,
+        submitted_price = 301.0,
+    )
+)
 
 # 撤单
-resp = cancel_order(ctx, "order_id")
+resp = cancel_order(ctx, "709043056541253632")
 
 # 断开连接
 disconnect!(ctx)
@@ -235,6 +251,7 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `set_on_depth(ctx, callback)`: 设置盘口推送的回调函数
 - `set_on_brokers(ctx, callback)`: 设置经纪队列推送的回调函数
 - `set_on_trades(ctx, callback)`: 设置成交明细推送的回调函数
+- `set_on_candlestick(ctx, callback)`: 设置 K 线推送的回调函数
 - `subscribe(ctx, symbols, sub_types)`: 订阅行情
 - `unsubscribe(ctx, symbols, sub_types)`: 取消订阅
 
@@ -256,18 +273,22 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 
 ### 交易
 - `account_balance(ctx)`: 获取账户资金
-- `stock_positions(ctx, symbols)`: 获取持仓
-- `today_orders(ctx)`: 获取今日订单
-- `history_orders(ctx, start_date, end_date)`: 获取历史订单
-- `today_executions(ctx)`: 获取今日成交
-- `history_executions(ctx, start_date, end_date)`: 获取历史成交
-- `submit_order(ctx, symbol, order_type, side, quantity, price)`: 下单
-- `modify_order(ctx, order_id, quantity, price)`: 修改订单
+- `stock_positions(ctx; symbol)`: 获取持仓（symbol 可选过滤）
+- `fund_positions(ctx)`: 获取基金持仓
+- `today_orders(ctx; symbol, status, side)`: 获取今日订单
+- `history_orders(ctx; symbol, status, side, start_at, end_at)`: 获取历史订单
+- `today_executions(ctx; symbol)`: 获取今日成交
+- `history_executions(ctx; symbol, start_at, end_at)`: 获取历史成交
+- `order_detail(ctx, order_id)`: 获取订单详情
+- `submit_order(ctx, ::SubmitOrderOptions)`: 下单
+- `replace_order(ctx, ::ReplaceOrderOptions)`: 修改订单
 - `cancel_order(ctx, order_id)`: 撤单
+- `estimate_max_purchase_quantity(ctx, ::EstimateMaxPurchaseQuantityOptions)`: 预估最大购买数量
+- `cash_flow(ctx; start_at, end_at)`: 获取资金流水
+- `margin_ratio(ctx, symbol)`: 获取保证金比例
 - `set_on_order_changed(ctx, callback)`: 设置订单状态变化推送的回调函数
-- `set_on_trade_changed(ctx, callback)`: 设置成交回报推送的回调函数
-- `subscribe_trade(ctx, topics)`: 订阅交易推送
-- `unsubscribe_trade(ctx, topics)`: 取消订阅交易推送
+- `Trade.subscribe(ctx, topics::Vector{TopicType.T})`: 订阅交易推送（如 `[TopicType.Private]`）
+- `Trade.unsubscribe(ctx, topics::Vector{TopicType.T})`: 取消订阅交易推送
 
 ## 许可证
 
