@@ -1,5 +1,20 @@
 # Release Notes
 
+## v0.8.8 (2026-07-06)
+
+### Fixes — Quote WebSocket 保活与重连对齐上游 Rust wsclient
+
+- **修复空闲连接被 `1006 read idle timeout` 断开后不再恢复**：Quote 长连接的保活模型改为与上游一致——客户端不再主动发 WebSocket ping，改由服务端定期 ping 保活（HTTP.jl 自动回 PONG 并在收到任意帧时重置 read idle 计时器）。
+  - 新增 WebSocket 专用常量 `WS_CONNECT_TIMEOUT = 5`（上游 `CONNECT_TIMEOUT`）、`WS_HEARTBEAT_TIMEOUT = 120`（上游 `HEARTBEAT_TIMEOUT`，作为 `read_idle_timeout`）、`WS_WRITE_TIMEOUT = 20`；此前 20s 的 `read_idle_timeout` 过于激进，且依赖 10s 客户端 ping 喂活。REST `HTTP_CLIENT` 仍用独立的 `DEFAULT_TIMEOUT`，不受影响。
+  - 移除客户端 `start_heartbeat_loop`（主动 ping）循环。
+- **消息循环在连接非正常终止时自动重连**：EOF / 1006 / 协议错误等不再仅 `disconnect!` 导致静默死亡，而是触发 `reconnect!`（优先 `session_id` 快速重连，失败回退完整认证重连），对齐上游 `main_loop err → run() reconnect`；仅显式 `InterruptException` 才停止。
+- **快速重连后恢复订阅**：session 快速重连路径此前遗漏重新订阅，会导致 push 静默中断；现与上游一致，在两条重连路径后都调用 `on_reconnect` 恢复订阅。
+- **连接建立/网络故障不再杀死 QuoteContext**：`run_quote_loop` 中 `get_otp`/`connect!` 等建连阶段的瞬时失败（如 TLS handshake timeout）改为按指数退避重试（`MAX_CONNECT_ATTEMPTS = 5`），而非直接终止后台 task；此前一次瞬时超时会关闭 `command_ch` 导致后续请求以 `408 Channel is closed` 失败。
+
+### Dependencies
+
+- HTTP.jl `2.4.0` → `2.5.4`（WebSocket read idle timeout 逐帧重置行为依赖此版本），PrettyTables `3.3.2` → `3.4.0`，Tables `1.12.1` → `1.13.0`。
+
 ## v0.8.7 (2026-06-29)
 
 - 修复 `account_balance(ctx)` 解析：`cash_infos` 与 `frozen_transaction_fees` 现在会显式构造成 `CashInfo` / `FrozenTransactionFee`，避免 `JSON3.Object` 无法转换为嵌套结构体；`market` 字段同步解析为 `Market.T`。

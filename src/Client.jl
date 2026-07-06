@@ -14,10 +14,17 @@ using ..OAuth: OAuthHandle, access_token as oauth_access_token
 
 export WSClient, refresh_token, post, put, delete
 
-# HTTP Client Constants
+# HTTP (REST) Client Constants
 const DEFAULT_TIMEOUT = (connect = 10, read = 20, write = 20)
-const HEARTBEAT_INTERVAL = min(10.0, DEFAULT_TIMEOUT.read / 2)
 const RETRIES = 3
+
+# WebSocket Client Constants (对齐上游 Rust wsclient)
+# 上游模型：客户端不主动发 ping，由服务端定期 ping 保活；
+# HTTP.jl 会自动回 PONG 并在收到任意帧时重置 read idle 计时器，
+# 因此 WS_HEARTBEAT_TIMEOUT 等价于上游的 HEARTBEAT_TIMEOUT。
+const WS_CONNECT_TIMEOUT = 5     # 上游 CONNECT_TIMEOUT
+const WS_HEARTBEAT_TIMEOUT = 120 # 上游 HEARTBEAT_TIMEOUT；read idle 窗口，服务端 ping 会刷新
+const WS_WRITE_TIMEOUT = 20      # HTTP.jl 中 write_idle_timeout 仅作用于握手阶段
 const HTTP_TRANSPORT =
     HTTP.Transport(max_idle_per_host = 20, max_idle_total = 20, max_conns_per_host = 20)
 const HTTP_CLIENT = HTTP.Client(
@@ -336,9 +343,9 @@ function connect!(client::WSClient)
         try
             WebSockets.open(
                 full_url;
-                connect_timeout = DEFAULT_TIMEOUT.connect,
-                read_idle_timeout = DEFAULT_TIMEOUT.read,
-                write_idle_timeout = DEFAULT_TIMEOUT.write,
+                connect_timeout = WS_CONNECT_TIMEOUT,
+                read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
+                write_idle_timeout = WS_WRITE_TIMEOUT,
             ) do ws
                 client.ws = ws
                 client.seq_id = UInt32(1)
@@ -475,45 +482,6 @@ start_message_loop(client::WSClient)
     
 启动消息处理循环。
 """
-function start_heartbeat_loop(client::WSClient)
-    ws = client.ws
-    isnothing(ws) && return
-
-    client.heartbeat_task = errormonitor(@async begin
-        try
-            @info "启动心跳循环"
-            while client.connected && client.ws === ws && _ws_is_open(ws)
-                sleep(HEARTBEAT_INTERVAL)
-
-                try
-                    # Use WebSocket's built-in ping for network-level keep-alive
-                    WebSockets.ping(ws)
-                    @debug "发送 WebSocket Ping 帧"
-                catch e
-                    if client.connected && client.ws === ws
-                        @warn "发送 Ping 帧失败，可能连接已断开" exception=(e, catch_backtrace())
-                        # Trigger reconnection logic if ping fails
-                        full_reconnect!(client)
-                    end
-                    break # Exit loop on failure
-                end
-            end
-        catch e
-            if !(e isa InterruptException)
-                @error "心跳循环异常退出" exception=(e, catch_backtrace())
-            end
-        finally
-            @info "心跳循环已停止" session_id=client.session_id
-        end
-    end)
-end
-
-
-"""
-start_message_loop(client::WSClient)
-    
-启动消息处理循环。
-"""
 function start_message_loop(client::WSClient)
     ws = client.ws
     isnothing(ws) && return
@@ -592,8 +560,8 @@ function start_message_loop(client::WSClient)
                                 )
                                 client.session_id = auth_resp.session_id
                                 @info "认证成功，连接已建立" session_id=client.session_id
-                                # 只有在认证成功后才启动心跳
-                                start_heartbeat_loop(client)
+                                # 对齐上游：客户端不主动发心跳，由服务端 ping 保活
+                                # （HTTP.jl 自动回 PONG 并刷新 read idle 计时器）
                             else
                                 @error "认证失败" status_code=status_code
                                 client.connected = false
@@ -666,12 +634,16 @@ function start_message_loop(client::WSClient)
             catch e
                 if e isa InterruptException
                     @info "消息循环被中断"
-                elseif e isa EOFError
-                    # 连接已被对方正常关闭，执行清理
-                    client.ws === ws && disconnect!(client)
-                else
-                    @error "消息循环异常" exception=(e, catch_backtrace())
-                    client.ws === ws && disconnect!(client)
+                elseif client.ws === ws
+                    # 连接非正常终止（EOF / 1006 read idle / 协议错误等）。
+                    # 对齐上游：连接断开即触发重连（优先用 session_id 快速重连，
+                    # 失败再回退完整认证重连），而不是仅断开导致静默死亡。
+                    if e isa EOFError
+                        @info "消息循环检测到连接关闭，尝试重连" session_id=client.session_id
+                    else
+                        @error "消息循环异常，尝试重连" exception=(e, catch_backtrace())
+                    end
+                    reconnect!(client)
                 end
             end
         catch e
@@ -712,9 +684,9 @@ function reconnect!(client::WSClient)
             # 1. 物理连接
             WebSockets.open(
                 full_url;
-                connect_timeout = DEFAULT_TIMEOUT.connect,
-                read_idle_timeout = DEFAULT_TIMEOUT.read,
-                write_idle_timeout = DEFAULT_TIMEOUT.write,
+                connect_timeout = WS_CONNECT_TIMEOUT,
+                read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
+                write_idle_timeout = WS_WRITE_TIMEOUT,
             ) do ws
                 client.ws = ws
                 client.seq_id = UInt32(1)
@@ -755,8 +727,15 @@ function reconnect!(client::WSClient)
                     end
                 end
 
-                # 重启心跳
-                start_heartbeat_loop(client)
+                # 对齐上游：不重启客户端心跳，由服务端 ping 保活。
+                # 上游在 reconnect 后无条件重新订阅，这里同样恢复订阅。
+                if !isnothing(client.on_reconnect)
+                    try
+                        Base.invokelatest(client.on_reconnect)
+                    catch e
+                        @error "快速重连后恢复订阅失败" exception=(e, catch_backtrace())
+                    end
+                end
 
                 # Keep HTTP.WebSockets.open's do-block alive for the new socket.
                 while client.ws === ws && _ws_is_open(ws)

@@ -28,7 +28,7 @@ config.toml
 *~
 
 # test files
-test.jl
+*test.jl
 openapi-reference/
 
 # Upstream reference clones (for cross-version comparison)

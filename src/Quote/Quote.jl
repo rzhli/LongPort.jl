@@ -190,6 +190,9 @@ end
 
 const REQUEST_WAIT_TIMEOUT = Client.REQUEST_TIMEOUT + 5.0
 const PUSH_CHANNEL_CAPACITY = 1024
+# Max consecutive connection-setup failures (e.g. get_otp TLS timeout) before
+# the background task gives up. Below this it retries with exponential backoff.
+const MAX_CONNECT_ATTEMPTS = 5
 
 function _is_reconnectable_ws_error(e)
     msg = sprint(showerror, e)
@@ -360,11 +363,32 @@ function run_quote_loop(
                 Client.full_reconnect!(inner.ws_client)
 
             else
-                @error "Quote background task failed with an unhandled exception" exception=(
-                    e,
-                    catch_backtrace(),
-                )
-                should_run = false # Exit on unhandled errors
+                # Connection setup / network failure (e.g. get_otp TLS timeout,
+                # WSClient connect failure). Don't kill the context on a transient
+                # hiccup — drop any half-open client and retry with backoff.
+                reconnect_attempts += 1
+                if !isnothing(inner.ws_client)
+                    try
+                        Client.disconnect!(inner.ws_client)
+                    catch
+                    end
+                    inner.ws_client = nothing
+                end
+
+                if reconnect_attempts >= MAX_CONNECT_ATTEMPTS
+                    @error "Quote background task giving up after $reconnect_attempts consecutive connection failures" exception=(
+                        e,
+                        catch_backtrace(),
+                    )
+                    should_run = false
+                else
+                    backoff = min(2.0^reconnect_attempts, 30.0)
+                    @warn "Quote connection setup failed (attempt $reconnect_attempts/$MAX_CONNECT_ATTEMPTS); retrying in $backoff s" exception=(
+                        e,
+                        catch_backtrace(),
+                    )
+                    sleep(backoff)
+                end
             end
         finally
             # 3. Cleanup on graceful shutdown
