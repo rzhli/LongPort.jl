@@ -2,12 +2,14 @@
 LongBridge Julia SDK — P0 Analytics Examples
 
 本文件演示 v4.1.0 移植过来的 4 个 HTTP-only Context 的用法，外加 QuoteContext 的 4 个新方法。
-所有调用都是同步阻塞的 REST 请求；institution_rating 和 profit_analysis 内部用 Threads.@spawn 并行 fan-out。
+所有调用都是同步阻塞的 REST 请求；institution_rating 和 profit_analysis 内部用受监督的异步任务并发 fan-out。
 
 运行前请先设置 OAuth client_id（替换下面的占位符）。
 """
 
 using LongBridge, Dates
+
+function main()
 
 # ── OAuth 初始化（跨平台浏览器回调） ─────────────────────────────────────
 
@@ -317,3 +319,7 @@ end
 # 4) 限定日期窗口（接受 "YYYY-MM-DD" 字符串或 Date）+ 分页
 # display(macroeconomic(fc, "US_CPI_YOY"; start_date="2023-01-01", end_date="2024-12-31"))
 # display(macroeconomic(fc, "US_CPI_YOY"; start_date=Date(2023,1,1), end_date=Date(2024,12,31), offset=0, limit=50))
+
+end
+
+abspath(PROGRAM_FILE) == abspath(@__FILE__) && main()

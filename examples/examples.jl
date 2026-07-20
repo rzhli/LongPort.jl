@@ -5,6 +5,8 @@ LongBridge Julia SDK - Test Script
 
 using LongBridge, Dates
 
+function main()
+
 # 1. Use OAuth 2.0 (Recommended)
 # First  obtain client_id by:
 #=  
@@ -293,13 +295,7 @@ set_on_candlestick(ctx, on_candlestick_callback)
 @time resp = security_list(ctx, Market.US, SecurityListCategory.Overnight)
 
 disconnect!(ctx)
-
-
-
-
-
 # 交易
-using LongBridge, Dates
 
 # Load config from TOML file
 cfg = Config.from_toml()
@@ -458,3 +454,7 @@ if !isempty(sl.list)
 end
 
 disconnect!(ctx)
+
+end
+
+abspath(PROGRAM_FILE) == abspath(@__FILE__) && main()

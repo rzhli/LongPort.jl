@@ -1,10 +1,10 @@
 module Config
 
 using TOML
-using HTTP, JSON3, SHA, Base64, Dates
+using HTTP, JSON3, Dates
 using ..Constant
 using ..Errors: LongBridgeError
-using ..OAuth: OAuthHandle, access_token as oauth_access_token
+using ..OAuth: OAuthHandle
 
 export Settings, config, from_toml, from_oauth
 
@@ -76,12 +76,13 @@ Args:
 Returns:
     config instance
 """
-function from_toml(path::String)
+function from_toml(path::AbstractString)
     if !isfile(path)
         throw(LongBridgeError(404, "Config file not found: $path"))
     end
 
-    config_dict = TOML.parsefile(path)
+    config_path = String(path)
+    config_dict = TOML.parsefile(config_path)
 
     # URLs - use Constant defaults unless the TOML explicitly overrides them
     http_url = String(get(config_dict, "http_url", DEFAULT_HTTP_URL_CN))
@@ -121,7 +122,7 @@ function from_toml(path::String)
                 response_header_timeout = 10,
                 read_idle_timeout = 30,
             )
-            data = JSON3.read(String(resp.body))
+            data = JSON3.read(resp.body)
             if data.code == 0
                 access_token = data.data.token
                 raw_expired_at = data.data.expired_at
@@ -131,14 +132,14 @@ function from_toml(path::String)
                 token_expire_time = DateTime(raw_expired_at)
                 config_dict["access_token"] = access_token
                 config_dict["token_expire_time"] = string(token_expire_time)
-                open(path, "w") do f
+                open(config_path, "w") do f
                     TOML.print(f, config_dict)
                 end
             else
                 @warn "refresh token failed: $(data.message)"
             end
         catch e
-            @warn "refresh token exception: $e"
+            @warn "refresh token exception" exception=(e, catch_backtrace())
         end
     end
 

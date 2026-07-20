@@ -1,6 +1,6 @@
 module Sharelist
 
-using JSON3, StructTypes
+using StructTypes
 
 using ..Config
 using ..Client

@@ -84,6 +84,48 @@ end
     @test "count=20" in parts
     @test "space=a%20b" in parts
     @test !("skip=nothing" in parts)
+
+    typed_query = LongBridge.Client._build_query_string(Dict("page" => 2, "active" => true))
+    @test Set(split(typed_query, "&")) == Set(["page=2", "active=true"])
+end
+
+@testset "WebSocket 24-bit length codec" begin
+    for value in (0, 1, 0xff, 0x100, 0x123456, 0xffffff)
+        io = IOBuffer()
+        LongBridge.Client._write_u24(io, value)
+        @test position(io) == 3
+        seekstart(io)
+        @test LongBridge.Client._read_u24(io) == value
+    end
+    @test_throws ArgumentError LongBridge.Client._write_u24(IOBuffer(), -1)
+    @test_throws ArgumentError LongBridge.Client._write_u24(IOBuffer(), 0x1000000)
+end
+
+@testset "Generic public collection inputs" begin
+    symbols_view = view(["AAPL.US", "700.HK"], 1:1)
+    @test hasmethod(
+        LongBridge.quote_snapshot,
+        Tuple{LongBridge.QuoteContext,typeof(symbols_view)},
+    )
+    @test hasmethod(
+        LongBridge.delete_alerts,
+        Tuple{LongBridge.AlertContext,typeof(symbols_view)},
+    )
+end
+
+@testset "Realtime cache bounds and views" begin
+    store = LongBridge.Cache.RealtimeStore{Int,Int,Int,Int,Int}()
+    trades = collect(1:600)
+    LongBridge.Cache.update_trades!(store, SubString("AAPL.US", 1), view(trades, :))
+    @test LongBridge.Cache.get_trades(store, "AAPL.US") == collect(101:600)
+    @test LongBridge.Cache.get_trades(store, "AAPL.US"; count = 3) == [598, 599, 600]
+
+    candles = collect(1:1100)
+    LongBridge.Cache.update_candlesticks!(store, "AAPL.US", 1, view(candles, :))
+    cached = LongBridge.Cache.get_candlesticks(store, "AAPL.US", 1)
+    @test length(cached) == 1000
+    @test first(cached) == 101
+    @test last(cached) == 1100
 end
 
 @testset "Disconnect" begin

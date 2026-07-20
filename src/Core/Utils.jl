@@ -1,6 +1,6 @@
 module Utils
 
-using Logging, Dates, JSON3, DataFrames, EnumX
+using Dates, JSON3, DataFrames, EnumX
 import DecFP: Dec64
 
 export to_namedtuple,
@@ -17,20 +17,16 @@ export to_namedtuple,
     Dec64
 
 # Utility function to convert UTC timestamp to China time (UTC+8)
-function to_china_time(timestamp::Int64)
-    return unix2datetime(timestamp) + Hour(8)
-end
-
-function to_china_time(timestamp::String)
-    return unix2datetime(parse(Int64, timestamp)) + Hour(8)
-end
+to_china_time(timestamp::Integer) = unix2datetime(timestamp) + Hour(8)
+to_china_time(timestamp::AbstractString) =
+    unix2datetime(parse(Int64, timestamp)) + Hour(8)
 
 """
     to_dataframe(data::Vector{T}) where T
 
 Converts a vector of structs to a DataFrame.
 """
-function to_dataframe(data::Vector{T}) where {T}
+function to_dataframe(data::AbstractVector{T}) where {T}
     if isempty(data)
         if isstructtype(T) && !isabstracttype(T)
             fnames = fieldnames(T)
@@ -68,7 +64,7 @@ function to_namedtuple(obj)
         keys = Tuple(propertynames(obj))
         values = Tuple(to_namedtuple(obj[key]) for key in keys)
         return NamedTuple{keys}(values)
-    elseif obj isa Union{JSON3.Array,Vector,SubArray}
+    elseif obj isa Union{JSON3.Array,AbstractVector}
         # Convert JSON array or Vector to Vector of converted items
         return [to_namedtuple(item) for item in obj]
     elseif isstructtype(typeof(obj))
@@ -146,12 +142,7 @@ _parse_optional_decimal(::Nothing) = nothing
 function _parse_optional_decimal(v::AbstractString)
     s = strip(String(v))
     isempty(s) && return nothing
-    occursin(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$", s) || return nothing
-    try
-        return parse(Dec64, s)
-    catch
-        return nothing
-    end
+    return tryparse(Dec64, s)
 end
 _parse_optional_decimal(v::Number) = Dec64(v)
 
@@ -216,12 +207,14 @@ function _cached_counter_ids()
     end
 end
 
+_is_ascii_digit(c::Char) = '0' <= c <= '9'
 _is_hk_numeric_code(code::AbstractString, market::AbstractString) =
-    uppercase(String(market)) == "HK" && all(c -> '0' <= c <= '9', code)
+    uppercase(market) == "HK" && all(_is_ascii_digit, code)
 
 function _normalize_symbol_code(code::AbstractString, market::AbstractString)
     if _is_hk_numeric_code(code, market)
-        return replace(String(code), r"^0+" => "")
+        first_nonzero = findfirst(!=('0'), code)
+        return isnothing(first_nonzero) ? "" : String(SubString(code, first_nonzero))
     end
     String(code)
 end
@@ -274,9 +267,10 @@ function lookup_counter_id(symbol::AbstractString)
     startswith(code_raw, ".") && return string("IX/", market, "/", code_raw)
 
     code = _normalize_symbol_code(code_raw, market)
+    special_ids = _special_counter_ids()
     for prefix in ("ETF", "IX", "WT")
         candidate = string(prefix, "/", market, "/", code)
-        candidate ∈ _special_counter_ids() && return candidate
+        candidate ∈ special_ids && return candidate
     end
 
     cached = _cached_counter_ids()

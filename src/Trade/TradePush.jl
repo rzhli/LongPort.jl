@@ -38,7 +38,7 @@ function handle_push_event!(cb::Callbacks, n::Notification)
     if n.content_type == ContentType.CONTENT_JSON
         isnothing(cb.on_order_changed) && return
         try
-            order = JSON3.read(String(n.data), PushOrderChanged)
+            order = JSON3.read(n.data, PushOrderChanged)
             Base.invokelatest(cb.on_order_changed, order)
         catch e
             @error "订单变更回调函数执行失败" exception=(e, catch_backtrace())

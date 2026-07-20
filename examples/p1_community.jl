@@ -15,6 +15,8 @@ LongBridge Julia SDK — P1 Community & Plans Examples
 
 using LongBridge, Dates
 
+function main()
+
 # ── OAuth 初始化（跨平台浏览器回调） ─────────────────────────────────────
 
 function open_browser(url)
@@ -160,3 +162,7 @@ display(my_topics(cct; topic_type="article"))
 # reply = create_topic_reply(cct, new_topic_id, "我也持有 700.HK，长期看好")
 # 二级回复
 # create_topic_reply(cct, new_topic_id, "同感"; reply_to_id=reply.id)
+
+end
+
+abspath(PROGRAM_FILE) == abspath(@__FILE__) && main()

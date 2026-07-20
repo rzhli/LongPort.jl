@@ -1,6 +1,6 @@
 module Alert
 
-using JSON3, StructTypes
+using StructTypes
 
 using ..Config
 using ..Client
@@ -100,8 +100,8 @@ end
 
 端点：`DELETE /v1/notify/reminders`（body 中带 ids 数组）
 """
-function delete_alerts(ctx::AlertContext, alert_ids::Vector{String})
-    body = Dict{String,Any}("ids" => alert_ids)
+function delete_alerts(ctx::AlertContext, alert_ids::AbstractVector{<:AbstractString})
+    body = Dict{String,Any}("ids" => String[String(id) for id in alert_ids])
     resp = ApiResponse(Client.http_delete(ctx.config, "/v1/notify/reminders"; body))
     _check(resp)
     return resp.data

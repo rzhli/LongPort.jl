@@ -1,6 +1,6 @@
 module Client
 
-using HTTP, JSON3, URIs, SHA, Dates, CodecZlib
+using HTTP, JSON3, SHA, CodecZlib
 using HTTP: WebSockets
 import HTTP.WebSockets: send
 using Base.Threads
@@ -8,9 +8,8 @@ using Base.Threads
 using ..Config
 using ..Constant
 using ..ControlProtocol
-using ..QuoteProtocol
 using ..Errors
-using ..OAuth: OAuthHandle, access_token as oauth_access_token
+using ..OAuth: access_token as oauth_access_token
 
 export WSClient, refresh_token, post, put, delete
 
@@ -44,12 +43,12 @@ const COMMAND_CODE_RECONNECT = UInt8(ControlCommand.CMD_RECONNECT)
 const COMMAND_CODE_CLOSE = UInt8(ControlCommand.CMD_CLOSE)
 
 function _websocket_url(url::String)
-    query_params = [
-        "version=$(Constant.PROTOCOL_VERSION)",
-        "codec=$(Constant.CODEC_TYPE)",
-        "platform=$(Constant.PLATFORM_TYPE)",
-    ]
-    return url * "?" * join(query_params, "&")
+    return string(
+        url,
+        "?version=", Constant.PROTOCOL_VERSION,
+        "&codec=", Constant.CODEC_TYPE,
+        "&platform=", Constant.PLATFORM_TYPE,
+    )
 end
 
 # ==================== Signature Authentication ====================
@@ -113,13 +112,13 @@ end
 # ==================== HTTP Client ====================
 
 # 构建 query string
-function _build_query_string(params::Dict{String,Any})
+function _build_query_string(params::AbstractDict{<:AbstractString})
     isempty(params) && return ""
     io = IOBuffer(sizehint = QUERY_STRING_SIZE_HINT)
     first = true
     for (k, v) in params
         isnothing(v) && continue
-        escaped_key = HTTP.URIs.escapeuri(k)
+        escaped_key = HTTP.URIs.escapeuri(String(k))
         if v isa AbstractVector
             for val in v
                 isnothing(val) && continue
@@ -339,7 +338,7 @@ function connect!(client::WSClient)
     connect_error = Ref{Any}(nothing)
 
     # 创建WebSocket连接
-    ws_task = errormonitor(@async begin
+    errormonitor(@async begin
         try
             WebSockets.open(
                 full_url;
@@ -369,14 +368,9 @@ function connect!(client::WSClient)
 
     # 等待认证完成（最多 30s）。
     # 在认证响应到达消息循环时，notify(auth_event) 会立即唤醒此处。
-    timer = Timer(30.0)
-    errormonitor(@async begin
-        try
-            wait(timer)
-            notify(client.auth_event)
-        catch
-        end
-    end)
+    timer = Timer(30.0) do _
+        notify(client.auth_event)
+    end
     try
         wait(client.auth_event)
     finally
@@ -423,7 +417,7 @@ function disconnect!(client::WSClient)
     if _ws_is_open(client.ws)
         try
             WebSockets.close(client.ws)
-        catch e
+        catch
             # Ignore errors during close, as the connection might already be dead
         end
     end
@@ -460,6 +454,7 @@ function _write_request_frame(
     request_id::UInt32,
 )
     body_len = length(body)
+    body_len <= 0x00ff_ffff || throw(ArgumentError("WebSocket request body is too large"))
     packet = IOBuffer(sizehint = 11 + body_len)
 
     # Header byte: type=1 (request), verify=0, gzip=0, reserve=0
@@ -467,14 +462,28 @@ function _write_request_frame(
     write(packet, cmd)
     write(packet, hton(request_id))
     write(packet, hton(UInt16(REQUEST_TIMEOUT * 1000)))
-    write(packet, UInt8((body_len >> 16) & 0xFF))
-    write(packet, UInt8((body_len >> 8) & 0xFF))
-    write(packet, UInt8(body_len & 0xFF))
+    _write_u24(packet, body_len)
     write(packet, body)
 
     send(client.ws, take!(packet))
     @debug "已发送请求数据包" cmd=cmd request_id=request_id body_len=body_len
     return request_id
+end
+
+@inline function _write_u24(io::IO, value::Integer)
+    0 <= value <= 0x00ff_ffff || throw(ArgumentError("value does not fit in 24 bits"))
+    write(
+        io,
+        UInt8((value >> 16) & 0xff),
+        UInt8((value >> 8) & 0xff),
+        UInt8(value & 0xff),
+    )
+end
+
+@inline function _read_u24(io::IO)::Int
+    return (Int(read(io, UInt8)) << 16) |
+           (Int(read(io, UInt8)) << 8) |
+           Int(read(io, UInt8))
 end
 
 """
@@ -528,10 +537,7 @@ function start_message_loop(client::WSClient)
                         status_code = read(io, UInt8)
 
                         # 读取body_len (3 bytes)
-                        body_len_bytes = read(io, 3)
-                        body_len =
-                            (UInt32(body_len_bytes[1]) << 16) |
-                            (UInt32(body_len_bytes[2]) << 8) | UInt32(body_len_bytes[3])
+                        body_len = _read_u24(io)
 
                         @debug "解析包头" cmd=cmd request_id=request_id status_code=status_code body_len=body_len
                         if body_len > length(data) - 10
@@ -592,10 +598,7 @@ function start_message_loop(client::WSClient)
                         cmd = read(io, UInt8)
 
                         # 读取body_len (3 bytes)
-                        body_len_bytes = read(io, 3)
-                        body_len =
-                            (UInt32(body_len_bytes[1]) << 16) |
-                            (UInt32(body_len_bytes[2]) << 8) | UInt32(body_len_bytes[3])
+                        body_len = _read_u24(io)
 
                         @debug "解析推送包头" cmd=cmd body_len=body_len
                         if body_len > length(data) - 5

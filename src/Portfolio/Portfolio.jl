@@ -1,6 +1,6 @@
 module Portfolio
 
-using JSON3, StructTypes, Dates
+using StructTypes, Dates
 
 using ..Config
 using ..Client
@@ -33,11 +33,8 @@ _date_to_unix_opt(::Nothing) = nothing
 _date_to_unix_opt(d::Date) = Int64(datetime2unix(DateTime(d)))
 function _date_to_unix_opt(s::AbstractString)
     isempty(s) && return nothing
-    try
-        return _date_to_unix_opt(Date(s))
-    catch
-        return nothing
-    end
+    date = tryparse(Date, s)
+    return isnothing(date) ? nothing : _date_to_unix_opt(date)
 end
 
 _date_to_unix_end_opt(::Nothing) = nothing
@@ -92,14 +89,14 @@ function profit_analysis(
         Client.http_get(
             ctx.config,
             "/v1/portfolio/profit-analysis-summary";
-            params = copy(summary_params),
+            params = summary_params,
         ),
     ))
     sublist_t = errormonitor(@async ApiResponse(
         Client.http_get(
             ctx.config,
             "/v1/portfolio/profit-analysis-sublist";
-            params = copy(sublist_params),
+            params = sublist_params,
         ),
     ))
     summary, sublist = fetch(summary_t), fetch(sublist_t)
@@ -133,9 +130,9 @@ function profit_analysis_by_market(
     params = Dict{String,Any}("page" => Int(page), "size" => Int(size))
     isnothing(market) || (params["market"] = String(market))
     isnothing(currency) || (params["currency"] = String(currency))
-    s = _date_to_unix_opt(start);
+    s = _date_to_unix_opt(start)
     isnothing(s) || (params["start"] = s)
-    e = _date_to_unix_end_opt(end_);
+    e = _date_to_unix_end_opt(end_)
     isnothing(e) || (params["end"] = e)
 
     resp = ApiResponse(
@@ -161,9 +158,9 @@ function profit_analysis_detail(
     end_::Union{Date,AbstractString,Nothing} = nothing,
 )
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
-    s = _date_to_unix_opt(start);
+    s = _date_to_unix_opt(start)
     isnothing(s) || (params["start"] = s)
-    e = _date_to_unix_end_opt(end_);
+    e = _date_to_unix_end_opt(end_)
     isnothing(e) || (params["end"] = e)
     resp = ApiResponse(
         Client.http_get(ctx.config, "/v1/portfolio/profit-analysis/detail"; params),
@@ -198,12 +195,9 @@ function profit_analysis_flows(
         "size" => Int(size),
         "derivative" => derivative,
     )
-    _to_date_str(::Nothing) = nothing
-    _to_date_str(d::Date) = Dates.format(d, dateformat"yyyy-mm-dd")
-    _to_date_str(s::AbstractString) = isempty(s) ? nothing : String(s)
-    st = _to_date_str(start);
+    st = _to_date_str(start)
     isnothing(st) || (params["start"] = st)
-    en = _to_date_str(end_);
+    en = _to_date_str(end_)
     isnothing(en) || (params["end"] = en)
 
     resp = ApiResponse(
@@ -212,5 +206,9 @@ function profit_analysis_flows(
     _check_or_raise(resp)
     StructTypes.construct(ProfitAnalysisFlows, resp.data)
 end
+
+_to_date_str(::Nothing) = nothing
+_to_date_str(d::Date) = Dates.format(d, dateformat"yyyy-mm-dd")
+_to_date_str(s::AbstractString) = isempty(s) ? nothing : String(s)
 
 end # module Portfolio

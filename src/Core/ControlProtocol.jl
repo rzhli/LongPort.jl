@@ -323,8 +323,8 @@ decode(data::Vector{UInt8}, message_type)
 
 Deserializes a byte vector into a Protobuf message struct of the given type.
 """
-function decode(data::Vector{UInt8}, message_type)
-    return PB.decode(PB.ProtoDecoder(IOBuffer(data)), message_type)
+function decode(data::Vector{UInt8}, ::Type{T}) where {T}
+    return PB.decode(PB.ProtoDecoder(IOBuffer(data)), T)
 end
 
 end # module

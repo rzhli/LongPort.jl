@@ -1,6 +1,6 @@
 module Screener
 
-using JSON3, StructTypes
+using StructTypes
 
 using ..Config
 using ..Client
@@ -46,8 +46,7 @@ const DEFAULT_RETURNS = String[
 ]
 
 # 内部小工具：剥离 / 补齐 filter_ 前缀
-_strip_filter(k::AbstractString) =
-    startswith(k, "filter_") ? String(k)[(length("filter_")+1):end] : String(k)
+_strip_filter(k::AbstractString) = String(chopprefix(k, "filter_"))
 _with_filter(k::AbstractString) =
     startswith(k, "filter_") ? String(k) : string("filter_", k)
 
@@ -205,8 +204,8 @@ function screener_search(
     ctx::ScreenerContext,
     market::AbstractString;
     strategy_id::Union{Integer,Nothing} = nothing,
-    conditions::Vector{ScreenerCondition} = ScreenerCondition[],
-    show::Vector{<:AbstractString} = String[],
+    conditions::AbstractVector{ScreenerCondition} = ScreenerCondition[],
+    show::AbstractVector{<:AbstractString} = String[],
     page::Integer = 0,
     size::Integer = 20,
 )

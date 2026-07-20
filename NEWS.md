@@ -1,5 +1,22 @@
 # Release Notes
 
+## v0.8.9 (2026-07-20)
+
+### Performance and API improvements
+
+- WebSocket 24-bit frame length encoding/decoding no longer allocates temporary byte arrays and now validates oversized request bodies.
+- Realtime quote caches reuse existing vector storage, enforce configured history limits, and accept `AbstractString` / `AbstractVector` inputs including views.
+- Quote and Trade APIs now accept broader string and collection inputs while converting once to concrete protocol types at the wire boundary.
+- Reduced avoidable allocations in decimal parsing, prefix normalization, JSON response parsing, OAuth token loading, error rendering, and content response construction.
+- Removed unused imports and avoided unnecessary package-load work; package version lookup now works when the source module is included directly.
+
+### Reliability and workflow
+
+- Simplified the WebSocket authentication timeout task and added bounds checks for protocol frame sizes.
+- Example and manual test scripts now run through guarded `main()` entry points, so including them does not open OAuth flows or send network requests.
+- Expanded tests for typed query dictionaries, WebSocket 24-bit lengths, generic collection inputs, and bounded realtime caches.
+- Updated locked dependencies, including HTTP.jl `2.5.5`, PrettyTables `3.4.2`, DataStructures `0.19.6`, and OrderedCollections `2.0.1`.
+
 ## v0.8.8 (2026-07-06)
 
 ### Fixes — Quote WebSocket 保活与重连对齐上游 Rust wsclient

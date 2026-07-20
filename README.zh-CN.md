@@ -6,6 +6,8 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
+最新版本：**v0.8.9** —— 降低 WebSocket/实时缓存路径分配，支持更广泛的 Julia 字符串和集合输入，并完善脚本入口与回归测试。
+
 参考文档：
 
 1. [官方文档](https://open.longportapp.com/zh-CN/docs)

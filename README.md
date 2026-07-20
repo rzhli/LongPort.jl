@@ -6,6 +6,8 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
+Latest release: **v0.8.9** — lower-allocation WebSocket/cache paths, broader Julia collection inputs, safer script entry points, and expanded regression tests.
+
 References:
 
 1. [Official Documentation](https://open.longportapp.com/en/docs)

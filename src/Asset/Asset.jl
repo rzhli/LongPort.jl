@@ -1,6 +1,6 @@
 module Asset
 
-using JSON3, StructTypes, Dates
+using StructTypes
 
 using ..Config
 using ..Client

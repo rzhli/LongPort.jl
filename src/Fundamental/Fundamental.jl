@@ -625,7 +625,7 @@ function valuation_comparison(
     ctx::FundamentalContext,
     symbol::AbstractString,
     currency::AbstractString;
-    comparison_symbols::Union{Vector{<:AbstractString},Nothing} = nothing,
+    comparison_symbols::Union{AbstractVector{<:AbstractString},Nothing} = nothing,
 )
     params = Dict{String,Any}(
         "counter_id" => symbol_to_counter_id(symbol),

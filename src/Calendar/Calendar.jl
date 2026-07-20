@@ -1,6 +1,6 @@
 module Calendar
 
-using JSON3, StructTypes, Dates
+using StructTypes, Dates
 
 using ..Config
 using ..Client

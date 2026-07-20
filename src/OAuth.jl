@@ -1,9 +1,8 @@
 module OAuth
 
-using HTTP, JSON3, Random, Dates, StructTypes
+using HTTP, JSON3, Random, StructTypes
 using Base.Threads: ReentrantLock
 
-using ..Constant
 using ..Errors: LongBridgeError
 
 export OAuthToken,
@@ -83,7 +82,7 @@ end
 
 Returns the filesystem path for persisting this client's token.
 """
-token_path(client_id::String) = joinpath(_token_dir(), client_id)
+token_path(client_id::AbstractString) = joinpath(_token_dir(), client_id)
 
 """
     save_to_path(token::OAuthToken)
@@ -105,12 +104,13 @@ end
 
 Load a cached token from disk. Returns `nothing` if no cached token exists.
 """
-function load_from_path(client_id::String)::Union{OAuthToken,Nothing}
+function load_from_path(client_id::AbstractString)::Union{OAuthToken,Nothing}
     path = token_path(client_id)
     isfile(path) || return nothing
     try
-        data = read(path, String)
-        return JSON3.read(data, OAuthToken)
+        return open(path) do io
+            JSON3.read(io, OAuthToken)
+        end
     catch e
         @warn "Failed to load cached OAuth token" path exception=e
         return nothing
@@ -212,7 +212,7 @@ function refresh_token!(handle::OAuthHandle)
         ),
     )
 
-    data = JSON3.read(String(resp.body))
+    data = JSON3.read(resp.body)
 
     new_refresh = get(data, :refresh_token, token.refresh_token)
     new_token = OAuthToken(
@@ -335,7 +335,7 @@ function authorize!(handle::OAuthHandle, open_url_fn)
             ),
         )
 
-        data = JSON3.read(String(resp.body))
+        data = JSON3.read(resp.body)
 
         new_token = OAuthToken(
             handle.client_id,

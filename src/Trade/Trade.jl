@@ -1,6 +1,6 @@
 module Trade
 
-using JSON3, Dates, Logging, DataFrames, StructTypes
+using JSON3, Dates, DataFrames, StructTypes
 import ProtoBuf as PB
 
 using ..Constant
@@ -332,7 +332,7 @@ function _parse_order_data(o)
 end
 
 # Helper: convert orders to DataFrame
-function _orders_to_dataframe(orders::Vector{Order})
+function _orders_to_dataframe(orders::AbstractVector{Order})
     DataFrame(
         "Order ID" => [o.order_id for o in orders],
         "Symbol" => [o.symbol for o in orders],
@@ -348,7 +348,7 @@ end
 set_on_order_changed(ctx::TradeContext, cb) =
     TradePush.set_on_order_changed!(ctx.inner.callbacks, cb)
 
-function subscribe(ctx::TradeContext, topics::Vector{TopicType.T})
+function subscribe(ctx::TradeContext, topics::AbstractVector{TopicType.T})
     ch = Channel(1)
     str_topics = [string(t) for t in topics]
     cmd = SubscribeCmd(str_topics, ch)
@@ -356,7 +356,7 @@ function subscribe(ctx::TradeContext, topics::Vector{TopicType.T})
     union!(ctx.inner.subscriptions, str_topics)
 end
 
-function unsubscribe(ctx::TradeContext, topics::Vector{TopicType.T})
+function unsubscribe(ctx::TradeContext, topics::AbstractVector{TopicType.T})
     ch = Channel(1)
     str_topics = [string(t) for t in topics]
     cmd = UnsubscribeCmd(str_topics, ch)
@@ -451,8 +451,8 @@ function submit_order(ctx::TradeContext, options::SubmitOrderOptions)
     end
 end
 
-function cancel_order(ctx::TradeContext, order_id::String)
-    params = Dict{String,Any}("order_id" => string(order_id))
+function cancel_order(ctx::TradeContext, order_id::AbstractString)
+    params = Dict{String,Any}("order_id" => String(order_id))
     cmd = HttpDeleteCmd("/v1/trade/order", params, Channel(1))
     resp = request(ctx, cmd)
     if resp.code != 0
@@ -523,8 +523,8 @@ function stock_positions(ctx::TradeContext; symbol::Union{String,Nothing} = noth
     end
 end
 
-function margin_ratio(ctx::TradeContext, symbol::String)
-    params = Dict{String,Any}("symbol" => string(symbol))
+function margin_ratio(ctx::TradeContext, symbol::AbstractString)
+    params = Dict{String,Any}("symbol" => String(symbol))
     cmd = HttpGetCmd("/v1/risk/margin-ratio", params, Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
@@ -534,8 +534,8 @@ function margin_ratio(ctx::TradeContext, symbol::String)
     end
 end
 
-function order_detail(ctx::TradeContext, order_id::String)
-    params = Dict{String,Any}("order_id" => string(order_id))
+function order_detail(ctx::TradeContext, order_id::AbstractString)
+    params = Dict{String,Any}("order_id" => String(order_id))
     cmd = HttpGetCmd("/v1/trade/order", params, Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0

@@ -5,7 +5,7 @@ using PrecompileTools: @setup_workload, @compile_workload
 
 # Version
 include_dependency(joinpath(@__DIR__, "..", "Project.toml"))
-const VERSION = TOML.parsefile(joinpath(pkgdir(@__MODULE__), "Project.toml"))["version"]
+const VERSION = TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"]
 
 # Forward declaration for multi-dispatch across modules
 function disconnect! end

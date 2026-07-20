@@ -1,6 +1,6 @@
 module Quote
 
-using ProtoBuf, JSON3, Dates, Logging, DataFrames, HTTP, EnumX
+using ProtoBuf, JSON3, Dates, DataFrames, HTTP, EnumX
 using Dates: datetime2unix
 using ..Config, ..QuotePush, ..Client, ..QuoteProtocol, ..ControlProtocol, ..Constant
 using ..Commands:
@@ -608,7 +608,7 @@ function request(ctx::QuoteContext, cmd::AbstractCommand)
 
     # 如果是 HTTP.Response，则读取 body 再解析 JSON
     if resp isa HTTP.Response
-        return JSON3.read(String(resp.body))
+        return JSON3.read(resp.body)
     end
 
     if resp isa String
@@ -634,23 +634,27 @@ set_on_candlestick(ctx::QuoteContext, cb) =
 
 function subscribe(
     ctx::QuoteContext,
-    symbols::Vector{String},
-    sub_types::Vector{SubType.T};
+    symbols::AbstractVector{<:AbstractString},
+    sub_types::AbstractVector{SubType.T};
     is_first_push::Bool = false,
 )
-    req = QuoteSubscribeRequest(symbols, sub_types, is_first_push)
+    symbol_list = String[String(symbol) for symbol in symbols]
+    type_list = collect(sub_types)
+    req = QuoteSubscribeRequest(symbol_list, type_list, is_first_push)
     cmd = GenericRequestCmd(QuoteCommand.Subscribe, req, QuoteSubscribeResponse, Channel(1))
     request(ctx, cmd)
-    push!(ctx.inner.subscriptions, (symbols, sub_types))
-    return [(symbol = s, sub_types = sub_types) for s in symbols]
+    push!(ctx.inner.subscriptions, (symbol_list, type_list))
+    return [(symbol = symbol, sub_types = type_list) for symbol in symbol_list]
 end
 
 function unsubscribe(
     ctx::QuoteContext,
-    symbols::Vector{String},
-    sub_types::Vector{SubType.T},
+    symbols::AbstractVector{<:AbstractString},
+    sub_types::AbstractVector{SubType.T},
 )
-    req = QuoteUnsubscribeRequest(symbols, sub_types, false)
+    symbol_list = String[String(symbol) for symbol in symbols]
+    type_list = collect(sub_types)
+    req = QuoteUnsubscribeRequest(symbol_list, type_list, false)
     cmd = GenericRequestCmd(
         QuoteCommand.Unsubscribe,
         req,
@@ -658,8 +662,8 @@ function unsubscribe(
         Channel(1),
     )
     request(ctx, cmd)
-    delete!(ctx.inner.subscriptions, (symbols, sub_types))
-    return [(symbol = s, sub_types = sub_types) for s in symbols]
+    delete!(ctx.inner.subscriptions, (symbol_list, type_list))
+    return [(symbol = symbol, sub_types = type_list) for symbol in symbol_list]
 end
 
 """
@@ -671,8 +675,8 @@ locally cached latest push.
 
 Mirrors Rust SDK `QuoteContext::quote`.
 """
-function quote_snapshot(ctx::QuoteContext, symbols::Vector{String})
-    req = MultiSecurityRequest(symbols)
+function quote_snapshot(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString})
+    req = MultiSecurityRequest(String[String(symbol) for symbol in symbols])
     cmd = GenericRequestCmd(
         QuoteCommand.QuerySecurityQuote,
         req,
@@ -693,19 +697,19 @@ for any symbol that has not received a push yet (subscribe first via [`subscribe
 Mirrors Rust SDK `QuoteContext::realtime_quote`. For a one-shot server query, use
 [`quote_snapshot`](@ref).
 """
-realtime_quote(ctx::QuoteContext, symbol::String) = get_quote(ctx.inner.store, symbol)
-realtime_quote(ctx::QuoteContext, symbols::Vector{String}) =
+realtime_quote(ctx::QuoteContext, symbol::AbstractString) = get_quote(ctx.inner.store, symbol)
+realtime_quote(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString}) =
     [get_quote(ctx.inner.store, s) for s in symbols]
 
 function candlesticks(
     ctx::QuoteContext,
-    symbol::String,
+    symbol::AbstractString,
     period::CandlePeriod.T = DAY,
     count::Int64 = 365;
     trade_sessions::TradeSession.T = TradeSession.Intraday,
     adjust_type::AdjustType.T = AdjustType.FORWARD_ADJUST,
 )
-    req = SecurityCandlestickRequest(symbol, period, count, adjust_type, trade_sessions)
+    req = SecurityCandlestickRequest(String(symbol), period, count, adjust_type, trade_sessions)
     cmd = GenericRequestCmd(
         QuoteCommand.QueryCandlestick,
         req,
@@ -732,7 +736,7 @@ end
 
 function history_candlesticks_by_offset(
     ctx::QuoteContext,
-    symbol::String,
+    symbol::AbstractString,
     period::CandlePeriod.T,
     adjust_type::AdjustType.T,
     direction::Direction.T,
@@ -749,7 +753,7 @@ function history_candlesticks_by_offset(
     )
 
     req = SecurityHistoryCandlestickRequest(
-        symbol,
+        String(symbol),
         period,
         adjust_type,
         HistoryCandlestickQueryType.QUERY_BY_OFFSET,
@@ -783,7 +787,7 @@ end
 
 function history_candlesticks_by_date(
     ctx::QuoteContext,
-    symbol::String,
+    symbol::AbstractString,
     period::CandlePeriod.T,
     adjust_type::AdjustType.T;
     start_date::Union{Date,Nothing} = nothing,
@@ -797,7 +801,7 @@ function history_candlesticks_by_date(
     )
 
     req = SecurityHistoryCandlestickRequest(
-        symbol,
+        String(symbol),
         period,
         adjust_type,
         HistoryCandlestickQueryType.QUERY_BY_DATE,
@@ -829,8 +833,8 @@ function history_candlesticks_by_date(
     return DataFrame(data)
 end
 
-function depth(ctx::QuoteContext, symbol::String)
-    req = SecurityRequest(symbol)
+function depth(ctx::QuoteContext, symbol::AbstractString)
+    req = SecurityRequest(String(symbol))
     cmd = GenericRequestCmd(QuoteCommand.QueryDepth, req, SecurityDepthResponse, Channel(1))
     resp = request(ctx, cmd)
 
@@ -876,8 +880,8 @@ function subscriptions(ctx::QuoteContext)
     return to_namedtuple(resp.sub_list)
 end
 
-function static_info(ctx::QuoteContext, symbols::Vector{String})
-    req = MultiSecurityRequest(symbols)
+function static_info(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString})
+    req = MultiSecurityRequest(String[String(symbol) for symbol in symbols])
     cmd = GenericRequestCmd(
         QuoteCommand.QuerySecurityStaticInfo,
         req,
@@ -888,8 +892,8 @@ function static_info(ctx::QuoteContext, symbols::Vector{String})
     return DataFrame(to_namedtuple(resp.secu_static_info))
 end
 
-function trades(ctx::QuoteContext, symbol::String, count::Int)
-    req = SecurityTradeRequest(symbol, count)
+function trades(ctx::QuoteContext, symbol::AbstractString, count::Integer)
+    req = SecurityTradeRequest(String(symbol), Int(count))
     cmd = GenericRequestCmd(QuoteCommand.QueryTrade, req, SecurityTradeResponse, Channel(1))
     resp = request(ctx, cmd)
 
@@ -903,8 +907,8 @@ function trades(ctx::QuoteContext, symbol::String, count::Int)
     return df
 end
 
-function brokers(ctx::QuoteContext, symbol::String)
-    req = SecurityRequest(symbol)
+function brokers(ctx::QuoteContext, symbol::AbstractString)
+    req = SecurityRequest(String(symbol))
     cmd = GenericRequestCmd(
         QuoteCommand.QueryBrokers,
         req,
@@ -921,10 +925,10 @@ end
 
 function intraday(
     ctx::QuoteContext,
-    symbol::String;
+    symbol::AbstractString;
     trade_session::TradeSession.T = TradeSession.All,
 )
-    req = SecurityIntradayRequest(symbol, trade_session)
+    req = SecurityIntradayRequest(String(symbol), trade_session)
     cmd = GenericRequestCmd(
         QuoteCommand.QueryIntraday,
         req,
@@ -946,8 +950,8 @@ function intraday(
     return DataFrame(data)
 end
 
-function option_chain_expiry_date_list(ctx::QuoteContext, symbol::String)
-    req = SecurityRequest(symbol)
+function option_chain_expiry_date_list(ctx::QuoteContext, symbol::AbstractString)
+    req = SecurityRequest(String(symbol))
     cmd = GenericRequestCmd(
         QuoteCommand.QueryOptionChainDate,
         req,
@@ -958,8 +962,12 @@ function option_chain_expiry_date_list(ctx::QuoteContext, symbol::String)
     return resp.expiry_date
 end
 
-function option_chain_info_by_date(ctx::QuoteContext, symbol::String, expiry_date::Date)
-    req = OptionChainDateStrikeInfoRequest(symbol, expiry_date)
+function option_chain_info_by_date(
+    ctx::QuoteContext,
+    symbol::AbstractString,
+    expiry_date::Date,
+)
+    req = OptionChainDateStrikeInfoRequest(String(symbol), expiry_date)
     cmd = GenericRequestCmd(
         QuoteCommand.QueryOptionChainDateStrikeInfo,
         req,
@@ -985,7 +993,7 @@ end
 
 function warrant_list(
     ctx::QuoteContext,
-    symbol::String,
+    symbol::AbstractString,
     sort_by::WarrantSortBy.T,
     sort_order::SortOrderType.T;
     warrant_type::Union{Nothing,Vector{WarrantType.T}} = nothing,
@@ -1007,7 +1015,7 @@ function warrant_list(
         isnothing(price_type) ? FilterWarrantInOutBoundsType.T[] : price_type,
         isnothing(status) ? WarrantStatus.T[] : status,
     )
-    req = WarrantFilterListRequest(symbol, filter_config, Int32(language))
+    req = WarrantFilterListRequest(String(symbol), filter_config, Int32(language))
     cmd = GenericRequestCmd(
         QuoteCommand.QueryWarrantFilterList,
         req,
@@ -1079,9 +1087,9 @@ function trading_days(ctx::QuoteContext, market::Market.T, start_date::Date, end
     return DataFrame(date = dates, day_type = day_types)
 end
 
-function capital_flow(ctx::QuoteContext, symbol::String)
+function capital_flow(ctx::QuoteContext, symbol::AbstractString)
     """Get intraday capital flow for a symbol"""
-    req = CapitalFlowIntradayRequest(symbol)
+    req = CapitalFlowIntradayRequest(String(symbol))
     cmd = GenericRequestCmd(
         QuoteCommand.QueryCapitalFlowIntraday,
         req,
@@ -1096,9 +1104,9 @@ function capital_flow(ctx::QuoteContext, symbol::String)
     return DataFrame(data)
 end
 
-function capital_distribution(ctx::QuoteContext, symbol::String)
+function capital_distribution(ctx::QuoteContext, symbol::AbstractString)
     """Get capital flow distribution for a symbol"""
-    req = SecurityRequest(symbol)
+    req = SecurityRequest(String(symbol))
     cmd = GenericRequestCmd(
         QuoteCommand.QueryCapitalFlowDistribution,
         req,
@@ -1154,9 +1162,9 @@ function capital_distribution(ctx::QuoteContext, symbol::String)
     end
 end
 
-function calc_indexes(ctx::QuoteContext, symbols::Vector{String})
+function calc_indexes(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString})
     all_indexes = collect(instances(CalcIndex.T))
-    req = SecurityCalcQuoteRequest(symbols, all_indexes)
+    req = SecurityCalcQuoteRequest(String[String(symbol) for symbol in symbols], all_indexes)
     cmd = GenericRequestCmd(
         QuoteCommand.QuerySecurityCalcIndex,
         req,
@@ -1218,8 +1226,8 @@ function history_market_temperature(
     return (type = res.data.type, list = df)
 end
 
-function option_quote(ctx::QuoteContext, symbols::Vector{String})
-    req = MultiSecurityRequest(symbols)
+function option_quote(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString})
+    req = MultiSecurityRequest(String[String(symbol) for symbol in symbols])
     cmd = GenericRequestCmd(
         QuoteCommand.QueryOptionQuote,
         req,
@@ -1232,8 +1240,8 @@ function option_quote(ctx::QuoteContext, symbols::Vector{String})
     return to_namedtuple(resp.secu_quote)
 end
 
-function warrant_quote(ctx::QuoteContext, symbols::Vector{String})
-    req = MultiSecurityRequest(symbols)
+function warrant_quote(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString})
+    req = MultiSecurityRequest(String[String(symbol) for symbol in symbols])
     cmd = GenericRequestCmd(
         QuoteCommand.QueryWarrantQuote,
         req,
@@ -1340,7 +1348,7 @@ end
 Get real-time depth data from local cache for a subscribed symbol.
 Returns `nothing` if no data is available (symbol not subscribed or no push received yet).
 """
-function realtime_depth(ctx::QuoteContext, symbol::String)
+function realtime_depth(ctx::QuoteContext, symbol::AbstractString)
     get_depth(ctx.inner.store, symbol)
 end
 
@@ -1350,7 +1358,7 @@ end
 Get real-time broker queue data from local cache for a subscribed symbol.
 Returns `nothing` if no data is available.
 """
-function realtime_brokers(ctx::QuoteContext, symbol::String)
+function realtime_brokers(ctx::QuoteContext, symbol::AbstractString)
     get_brokers(ctx.inner.store, symbol)
 end
 
@@ -1363,7 +1371,7 @@ Get real-time trade data from local cache for a subscribed symbol.
 - `symbol::String`: Security symbol
 - `count::Int=0`: Maximum number of trades to return (0 = all available)
 """
-function realtime_trades(ctx::QuoteContext, symbol::String; count::Int = 0)
+function realtime_trades(ctx::QuoteContext, symbol::AbstractString; count::Int = 0)
     get_trades(ctx.inner.store, symbol; count = count)
 end
 
@@ -1379,7 +1387,7 @@ Get real-time candlestick data from local cache for a subscribed symbol and peri
 """
 function realtime_candlesticks(
     ctx::QuoteContext,
-    symbol::String,
+    symbol::AbstractString,
     period::CandlePeriod.T;
     count::Int = 0,
 )
@@ -1743,8 +1751,15 @@ _pinned_mode_str(m::PinnedMode.T) =
 
 端点：`POST /v1/watchlist/pinned`
 """
-function update_pinned(ctx::QuoteContext, mode::PinnedMode.T, symbols::Vector{String})
-    body = Dict{String,Any}("mode" => _pinned_mode_str(mode), "securities" => symbols)
+function update_pinned(
+    ctx::QuoteContext,
+    mode::PinnedMode.T,
+    symbols::AbstractVector{<:AbstractString},
+)
+    body = Dict{String,Any}(
+        "mode" => _pinned_mode_str(mode),
+        "securities" => String[String(symbol) for symbol in symbols],
+    )
     resp =
         Errors.ApiResponse(Client.http_post(ctx.inner.config, "/v1/watchlist/pinned"; body))
     resp.code == 0 ||

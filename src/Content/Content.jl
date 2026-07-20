@@ -1,6 +1,6 @@
 module Content
 
-using JSON3, StructTypes
+using StructTypes
 
 using ..Config
 using ..Client
@@ -36,7 +36,14 @@ function _opts_to_dict(opts)
         v = getfield(opts, name)
         isnothing(v) || (d[String(name)] = v)
     end
-    d
+    return d
+end
+
+function _construct_items(::Type{T}, data) where {T}
+    if !haskey(data, :items) || isnothing(data.items)
+        return T[]
+    end
+    return StructTypes.construct.(T, data.items)
 end
 
 # ── my_topics ──────────────────────────────────────────────────────
@@ -62,12 +69,7 @@ function my_topics(
     params = _opts_to_dict(opts)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/content/topics/mine"; params))
     _check(resp)
-    items = if haskey(resp.data, :items) && !isnothing(resp.data.items)
-        [StructTypes.construct(OwnedTopic, x) for x in resp.data.items]
-    else
-        OwnedTopic[]
-    end
-    return items
+    return _construct_items(OwnedTopic, resp.data)
 end
 
 # ── create_topic ───────────────────────────────────────────────────
@@ -112,12 +114,7 @@ end
 function topics_by_symbol(ctx::ContentContext, symbol::AbstractString)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/content/$(String(symbol))/topics"))
     _check(resp)
-    items = if haskey(resp.data, :items) && !isnothing(resp.data.items)
-        [StructTypes.construct(TopicItem, x) for x in resp.data.items]
-    else
-        TopicItem[]
-    end
-    return items
+    return _construct_items(TopicItem, resp.data)
 end
 
 # ── topic_detail ───────────────────────────────────────────────────
@@ -163,12 +160,7 @@ function topic_replies(
         ),
     )
     _check(resp)
-    items = if haskey(resp.data, :items) && !isnothing(resp.data.items)
-        [StructTypes.construct(TopicReply, x) for x in resp.data.items]
-    else
-        TopicReply[]
-    end
-    return items
+    return _construct_items(TopicReply, resp.data)
 end
 
 # ── create_topic_reply ─────────────────────────────────────────────
@@ -215,12 +207,7 @@ end
 function news(ctx::ContentContext, symbol::AbstractString)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/content/$(String(symbol))/news"))
     _check(resp)
-    items = if haskey(resp.data, :items) && !isnothing(resp.data.items)
-        [StructTypes.construct(NewsItem, x) for x in resp.data.items]
-    else
-        NewsItem[]
-    end
-    return items
+    return _construct_items(NewsItem, resp.data)
 end
 
 end # module Content

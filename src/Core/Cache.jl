@@ -34,7 +34,7 @@ mutable struct CacheItem{T}
     data::T
     expires_at::DateTime
 
-    function CacheItem(data::T, ttl_seconds::Float64) where {T}
+    function CacheItem(data::T, ttl_seconds::Real) where {T}
         new{T}(data, now() + Second(floor(Int, ttl_seconds)))
     end
 end
@@ -48,8 +48,8 @@ mutable struct SimpleCache{T}
     item::Union{Nothing,CacheItem{T}}
     ttl_seconds::Float64
 
-    function SimpleCache{T}(ttl_seconds::Float64) where {T}
-        new{T}(nothing, ttl_seconds)
+    function SimpleCache{T}(ttl_seconds::Real) where {T}
+        new{T}(nothing, Float64(ttl_seconds))
     end
 end
 
@@ -62,8 +62,8 @@ mutable struct CacheWithKey{K,V}
     items::Dict{K,CacheItem{V}}
     ttl_seconds::Float64
 
-    function CacheWithKey{K,V}(ttl_seconds::Float64) where {K,V}
-        new(Dict{K,CacheItem{V}}(), ttl_seconds)
+    function CacheWithKey{K,V}(ttl_seconds::Real) where {K,V}
+        new(Dict{K,CacheItem{V}}(), Float64(ttl_seconds))
     end
 end
 
@@ -72,9 +72,7 @@ is_expired(item::CacheItem) -> Bool
 
 检查缓存项是否过期。
 """
-function is_expired(item::CacheItem)::Bool
-    return now() > item.expires_at
-end
+is_expired(item::CacheItem) = now() > item.expires_at
 
 """
 get_or_update(cache::SimpleCache{T}, update_func::F) -> T
@@ -198,7 +196,7 @@ cleanup_expired!(cache::CacheWithKey)
 
 清理带键缓存中过期的项。
 """
-function cleanup_expired!(cache::CacheWithKey{K,V}) where {K,V}
+function cleanup_expired!(cache::CacheWithKey{K}) where {K}
     expired_keys = K[]
     for (key, item) in cache.items
         if is_expired(item)
@@ -266,6 +264,7 @@ mutable struct SecurityData{Q,D,B,T}
     max_trades::Int
 
     function SecurityData{Q,D,B,T}(; max_trades::Int = 500) where {Q,D,B,T}
+        max_trades > 0 || throw(ArgumentError("max_trades must be positive"))
         new{Q,D,B,T}(nothing, nothing, nothing, T[], max_trades)
     end
 end
@@ -283,6 +282,7 @@ mutable struct CandlestickData{C}
     max_count::Int
 
     function CandlestickData{C}(; max_count::Int = 1000) where {C}
+        max_count > 0 || throw(ArgumentError("max_count must be positive"))
         new{C}(C[], max_count)
     end
 end
@@ -328,8 +328,11 @@ mutable struct RealtimeStore{Q,D,B,T,C}
 end
 
 # Helper to get or create security data
-function _get_security!(store::RealtimeStore{Q,D,B,T,C}, symbol::String) where {Q,D,B,T,C}
-    get!(store.securities, symbol) do
+function _get_security!(
+    store::RealtimeStore{Q,D,B,T,C},
+    symbol::AbstractString,
+) where {Q,D,B,T,C}
+    get!(store.securities, String(symbol)) do
         SecurityData{Q,D,B,T}()
     end
 end
@@ -341,7 +344,7 @@ end
 """
 function update_quote!(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
     quote_data::Q,
 ) where {Q,D,B,T,C}
     lock(store.lock) do
@@ -357,7 +360,7 @@ end
 """
 function update_depth!(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
     depth::D,
 ) where {Q,D,B,T,C}
     lock(store.lock) do
@@ -373,7 +376,7 @@ end
 """
 function update_brokers!(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
     brokers::B,
 ) where {Q,D,B,T,C}
     lock(store.lock) do
@@ -389,15 +392,20 @@ end
 """
 function update_trades!(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
-    new_trades::Vector{T},
+    symbol::AbstractString,
+    new_trades::AbstractVector{T},
 ) where {Q,D,B,T,C}
     lock(store.lock) do
         security = _get_security!(store, symbol)
-        append!(security.trades, new_trades)
-        # 保留最新的 max_trades 条记录
-        if length(security.trades) > security.max_trades
-            deleteat!(security.trades, 1:(length(security.trades)-security.max_trades))
+        if length(new_trades) >= security.max_trades
+            empty!(security.trades)
+            append!(security.trades, @view new_trades[(end-security.max_trades+1):end])
+        else
+            append!(security.trades, new_trades)
+            # 保留最新的 max_trades 条记录
+            if length(security.trades) > security.max_trades
+                deleteat!(security.trades, 1:(length(security.trades)-security.max_trades))
+            end
         end
     end
 end
@@ -409,18 +417,22 @@ end
 """
 function update_candlesticks!(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
     period::Int,
-    new_candlesticks::Vector{C},
+    new_candlesticks::AbstractVector{C},
 ) where {Q,D,B,T,C}
     lock(store.lock) do
-        key = (symbol, period)
-        if !haskey(store.candlesticks, key)
-            store.candlesticks[key] = CandlestickData{C}()
+        key = (String(symbol), period)
+        data = get!(store.candlesticks, key) do
+            CandlestickData{C}()
         end
-        data = store.candlesticks[key]
-        # Replace with new data (for initial load)
-        data.candlesticks = new_candlesticks
+        # Reuse the existing allocation and retain only the newest max_count items.
+        count = min(length(new_candlesticks), data.max_count)
+        resize!(data.candlesticks, count)
+        if count > 0
+            source_start = lastindex(new_candlesticks) - count + 1
+            copyto!(data.candlesticks, 1, new_candlesticks, source_start, count)
+        end
     end
 end
 
@@ -431,10 +443,10 @@ end
 """
 function get_quote(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
 )::Union{Nothing,Q} where {Q,D,B,T,C}
     lock(store.lock) do
-        security = get(store.securities, symbol, nothing)
+        security = get(store.securities, String(symbol), nothing)
         isnothing(security) ? nothing : security.quote_data
     end
 end
@@ -446,10 +458,10 @@ end
 """
 function get_depth(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
 )::Union{Nothing,D} where {Q,D,B,T,C}
     lock(store.lock) do
-        security = get(store.securities, symbol, nothing)
+        security = get(store.securities, String(symbol), nothing)
         isnothing(security) ? nothing : security.depth
     end
 end
@@ -461,10 +473,10 @@ end
 """
 function get_brokers(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
 )::Union{Nothing,B} where {Q,D,B,T,C}
     lock(store.lock) do
-        security = get(store.securities, symbol, nothing)
+        security = get(store.securities, String(symbol), nothing)
         isnothing(security) ? nothing : security.brokers
     end
 end
@@ -480,11 +492,11 @@ end
 """
 function get_trades(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String;
+    symbol::AbstractString;
     count::Int = 0,
 )::Vector{T} where {Q,D,B,T,C}
     lock(store.lock) do
-        security = get(store.securities, symbol, nothing)
+        security = get(store.securities, String(symbol), nothing)
         if isnothing(security)
             return T[]
         end
@@ -508,12 +520,12 @@ end
 """
 function get_candlesticks(
     store::RealtimeStore{Q,D,B,T,C},
-    symbol::String,
+    symbol::AbstractString,
     period::Int;
     count::Int = 0,
 )::Vector{C} where {Q,D,B,T,C}
     lock(store.lock) do
-        key = (symbol, period)
+        key = (String(symbol), period)
         data = get(store.candlesticks, key, nothing)
         if isnothing(data)
             return C[]
@@ -543,9 +555,9 @@ end
 
 清除指定证券和周期的K线数据（用于取消订阅时）。
 """
-function clear_candlesticks!(store::RealtimeStore, symbol::String, period::Int)
+function clear_candlesticks!(store::RealtimeStore, symbol::AbstractString, period::Int)
     lock(store.lock) do
-        delete!(store.candlesticks, (symbol, period))
+        delete!(store.candlesticks, (String(symbol), period))
     end
 end
 

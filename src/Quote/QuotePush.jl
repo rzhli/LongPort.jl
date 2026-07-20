@@ -1,8 +1,6 @@
 module QuotePush
 
 using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, PushTrade, Candlestick
-using ..Utils: to_namedtuple
-
 export PushEvent,
     PushEventDetail,
     handle_push_event,
@@ -53,15 +51,15 @@ Handle push event - main dispatch function matching Python SDK handle_push_event
 """
 function handle_push_event(callbacks::Callbacks, event::PushEvent)
     try
-        if event.detail_type == QuoteEvent
+        if event.detail_type === QuoteEvent
             handle_quote(callbacks, event.symbol, event.data)
-        elseif event.detail_type == DepthEvent
+        elseif event.detail_type === DepthEvent
             handle_depth(callbacks, event.symbol, event.data)
-        elseif event.detail_type == BrokersEvent
+        elseif event.detail_type === BrokersEvent
             handle_brokers(callbacks, event.symbol, event.data)
-        elseif event.detail_type == TradeEvent
+        elseif event.detail_type === TradeEvent
             handle_trades(callbacks, event.symbol, event.data)
-        elseif event.detail_type == CandlestickEvent
+        elseif event.detail_type === CandlestickEvent
             handle_candlestick(callbacks, event.symbol, event.data)
         end
     catch e

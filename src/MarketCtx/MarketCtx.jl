@@ -1,6 +1,6 @@
 module MarketCtx
 
-using JSON3, StructTypes
+using StructTypes
 
 using ..Config
 using ..Client
@@ -215,7 +215,7 @@ end
 """
 function top_movers(
     ctx::MarketContext,
-    markets::Vector{<:AbstractString},
+    markets::AbstractVector{<:AbstractString},
     sort::Integer,
     limit::Integer;
     date::Union{AbstractString,Nothing} = nothing,
@@ -249,12 +249,12 @@ function rank_categories(ctx::MarketContext)
         for tag in data["first_tags"]
             tag isa Dict || continue
             if haskey(tag, "key") && tag["key"] isa AbstractString
-                tag["key"] = replace(tag["key"], r"^ib_" => "")
+                tag["key"] = String(chopprefix(tag["key"], "ib_"))
             end
             if haskey(tag, "second_tags") && tag["second_tags"] isa Vector
                 for sub in tag["second_tags"]
                     if sub isa Dict && haskey(sub, "key") && sub["key"] isa AbstractString
-                        sub["key"] = replace(sub["key"], r"^ib_" => "")
+                        sub["key"] = String(chopprefix(sub["key"], "ib_"))
                     end
                 end
             end
