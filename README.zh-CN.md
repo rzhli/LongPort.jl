@@ -6,7 +6,7 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.8.9** —— 降低 WebSocket/实时缓存路径分配，支持更广泛的 Julia 字符串和集合输入，并完善脚本入口与回归测试。
+最新版本：**v0.9.0** —— 新增美国数据中心自动路由、模拟交易支持、类型化的美区基本面/行情/交易/资产接口，以及分页成交记录查询。
 
 参考文档：
 
@@ -69,6 +69,7 @@ token_expire_time = "2025-07-22T00:00:00"  # ISO8601格式，UTC时间
 # http_url = "https://openapi.longportapp.com"
 # quote_ws_url = "wss://openapi-quote.longportapp.com"
 # trade_ws_url = "wss://openapi-trade.longportapp.com"
+# enable_papertrading = false
 ```
 
 ```julia
@@ -76,6 +77,12 @@ using LongBridge
 
 cfg = Config.from_toml()
 ```
+
+`us_` 前缀的凭证会自动使用美国数据中心。如需路由到模拟交易账户，可在 TOML
+中设置 `enable_papertrading = true`，或在创建 Context 前调用
+`enable_papertrading!(cfg)`。`us_company_overview`、`us_crypto_overview`、
+`us_query_orders`、`us_asset_overview` 等美区专属接口会拒绝非美区凭证，
+并返回明确错误。
 
 ### 行情
 

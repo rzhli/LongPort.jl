@@ -296,6 +296,7 @@ function symbol_to_counter_id(symbol::AbstractString)
     code_raw = String(SubString(s, 1, prevind(s, idx)))
     market = uppercase(String(SubString(s, nextind(s, idx))))
     code = _normalize_symbol_code(code_raw, market)
+    market == "BKKT" && return string("VA/", market, "/", code)
     return string("ST/", market, "/", code)
 end
 

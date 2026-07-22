@@ -1,5 +1,26 @@
 # Release Notes
 
+## v0.9.0 (2026-07-22)
+
+### US data-center and paper-trading support
+
+- Automatically detects `us_`-prefixed API-key or OAuth credentials and routes REST and WebSocket connections to the US data center; requests now include the `x-dc-region` header.
+- Adds `enable_papertrading!(cfg)`, the `enable_papertrading` TOML/environment option, and `x-papertrading` routing for REST and WebSocket requests.
+- US-only APIs validate the credential region locally and return a clear `LongBridgeError` instead of sending a request to the wrong data center.
+
+### New US-region APIs
+
+- Fundamental data: `us_company_overview`, `us_valuation_overview`, `us_financial_overview`, `us_financial_statement`, `us_key_financial_metrics`, `us_analyst_consensus`, `us_etf_dividend_info`, `us_company_dividends`, and `us_etf_files`.
+- Quote data: `us_crypto_overview`, including `BTCUSD.BKKT` ↔ `VA/BKKT/BTCUSD` symbol conversion.
+- Trading and assets: `us_query_orders`, `us_order_detail`, `us_asset_overview`, and `us_realized_pl`, with typed response models and normalized symbols.
+- Adds `all_executions` for paginated `GET /v3/trade/execution/all` history.
+
+### Trading model updates
+
+- `SubmitOrderOptions` now accepts typed `OutsideRTH` values and adds `OptionPreMarket`, `limit_depth_level`, `trigger_count`, `monitor_price`, and `client_request_id`.
+- Aligns `OrderTag` wire parsing with current upstream values and adds typed US order-query and execution option/response models.
+- Adds regression coverage for routing, wire values, request construction, US response models, public exports, and method signatures.
+
 ## v0.8.9 (2026-07-20)
 
 ### Performance and API improvements

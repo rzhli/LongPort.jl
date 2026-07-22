@@ -14,6 +14,7 @@ function disconnect! end
 include("Core/Constant.jl")
 include("Core/Errors.jl")
 include("Core/Utils.jl")
+include("Core/USProtocol.jl")
 include("Core/Cache.jl")
 include("Core/Commands.jl")
 include("Core/ControlProtocol.jl")
@@ -52,6 +53,7 @@ using .Constant: Market, Currency
 using .ControlProtocol
 using .QuoteProtocol
 using .TradeProtocol
+using .USProtocol
 using .CalendarProtocol
 using .PortfolioProtocol
 using .MarketProtocol
@@ -94,6 +96,7 @@ export Quote,
 
 # --- Config ---
 export Settings, config, from_oauth                        # 配置加载（config 是 Settings 的兼容别名）
+export enable_papertrading!, dc_region
 
 # --- OAuth ---
 export OAuthBuilder, OAuthHandle, OAuthToken, build
@@ -175,13 +178,22 @@ export ShortPositionsItem,
 # Options 结构体
 export GetHistoryExecutionsOptions,
     GetTodayExecutionsOptions,
+    GetAllExecutionsOptions,
+    GetUSHistoryOrders,
+    QueryUSOrdersOptions,
     EstimateMaxPurchaseQuantityOptions,
     GetHistoryOrdersOptions,
     ReplaceOrderOptions,
     SubmitOrderOptions,
     GetTodayOrdersOptions
 # 枚举类型
-export OrderType, OrderSide, OrderStatus, TimeInForceType, TopicType
+export OrderType,
+    OrderSide,
+    OrderStatus,
+    OrderTag,
+    TimeInForceType,
+    OutsideRTH,
+    TopicType
 
 # --- Trade (交易模块) ---
 # Context
@@ -195,6 +207,71 @@ export account_balance,
     cash_flow, stock_positions, fund_positions, margin_ratio, estimate_max_purchase_quantity
 # 推送
 export set_on_order_changed
+
+# --- v4.4.0 US-region APIs ---
+export us_company_overview,
+    us_valuation_overview,
+    us_financial_overview,
+    us_financial_statement,
+    us_key_financial_metrics,
+    us_analyst_consensus,
+    us_etf_dividend_info,
+    us_company_dividends,
+    us_etf_files,
+    us_crypto_overview,
+    us_asset_overview,
+    us_realized_pl,
+    us_query_orders,
+    us_order_detail,
+    all_executions
+
+export USRankTag,
+    USSharelistItem,
+    USAIChatData,
+    USCompanyOverview,
+    USValuationMetric,
+    USValuationOverview,
+    USReportPeriod,
+    USFinancialISItem,
+    USFinancialBSItem,
+    USFinancialCFItem,
+    USFinancialOverview,
+    USFinancialStatementField,
+    USFinancialStatementPeriod,
+    USFinancialStatement,
+    USKeyMetricItem,
+    USKeyFinancialMetrics,
+    USConsensusEstimate,
+    USConsensusItem,
+    USAnalystConsensus,
+    USFiscalYearDividend,
+    USETFDividendInfo,
+    USRecentDividend,
+    USDividendHistoryItem,
+    USDividendPayoutRecord,
+    USCompanyDividends,
+    USETFFile,
+    USETFFilesResponse,
+    USCryptoOverview,
+    GetUSHistoryOrders,
+    QueryUSOrdersOptions,
+    QueryUSOrdersResponse,
+    USOrderHistory,
+    USButtonControl,
+    USChargeItem,
+    USChargeDetail,
+    USAttachedOrder,
+    USOrderDetail,
+    USOrderDetailResponse,
+    USCashEntry,
+    USCryptoEntry,
+    USStockEntry,
+    USAssetOverview,
+    USRealizedPLMetric,
+    USRealizedPLEntry,
+    USRealizedPL,
+    GetAllExecutionsOptions,
+    AllExecutionsResponse
 
 # --- Calendar (财务日历) ---
 export CalendarContext, finance_calendar

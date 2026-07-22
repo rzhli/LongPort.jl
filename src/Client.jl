@@ -35,6 +35,8 @@ const HTTP_CLIENT = HTTP.Client(
 # WebSocket Client Constants (参考 Rust 实现)
 const REQUEST_TIMEOUT = 30.0  # seconds
 const QUERY_STRING_SIZE_HINT = 256
+const DC_REGION_HEADER = "x-dc-region"
+const PAPERTRADING_HEADER = "x-papertrading"
 
 # 认证和心跳命令 (use ControlProtocol enum values)
 const COMMAND_CODE_AUTH = UInt8(ControlProtocol.ControlCommand.CMD_AUTH)
@@ -135,6 +137,35 @@ function _build_query_string(params::AbstractDict{<:AbstractString})
     first ? "" : String(take!(io))
 end
 
+function _regional_http_url(config::Config.Settings, region::Symbol)
+    if region === :us && config.http_url == Constant.DEFAULT_HTTP_URL_CN
+        return Constant.DEFAULT_HTTP_URL
+    end
+    return config.http_url
+end
+
+function _regional_ws_url(url::String, region::Symbol)
+    region === :us || return url
+    url == Constant.DEFAULT_QUOTE_WS_CN && return Constant.DEFAULT_QUOTE_WS
+    url == Constant.DEFAULT_TRADE_WS_CN && return Constant.DEFAULT_TRADE_WS
+    return url
+end
+
+function _routing_headers(config::Config.Settings, region::Symbol)
+    headers = Pair{String,String}[DC_REGION_HEADER => String(region)]
+    config.enable_papertrading && push!(headers, PAPERTRADING_HEADER => "true")
+    return headers
+end
+
+function _check_dc_region(path::String, current::Symbol, required::Union{Symbol,Nothing})
+    isnothing(required) && return
+    current === required && return
+    throw(LongBridgeError(
+        403,
+        "API endpoint $path requires $(uppercase(String(required))) data-center credentials; current region is $(uppercase(String(current)))",
+    ))
+end
+
 # 通用 HTTP 请求函数
 function _http_request(
     config::Config.Settings,
@@ -142,11 +173,10 @@ function _http_request(
     path::String;
     params::Dict{String,Any} = Dict{String,Any}(),
     body::Union{Dict,Nothing} = nothing,
+    dc_region::Union{Symbol,Nothing} = nothing,
 )
     try
-        base_url = config.http_url
         query_string = _build_query_string(params)
-        full_url = base_url * path * (isempty(query_string) ? "" : "?" * query_string)
         body_str = isnothing(body) ? "" : JSON3.write(body)
 
         if config.auth_mode == :oauth
@@ -157,6 +187,7 @@ function _http_request(
                 "Authorization" => "Bearer $token",
                 "Content-Type" => "application/json; charset=utf-8",
             )
+            current_region = startswith(token, "us_") ? :us : :ap
         else
             # API Key mode: HMAC-SHA256 signature
             timestamp = string(floor(Int, time() * 1000))
@@ -166,11 +197,18 @@ function _http_request(
                 "X-Timestamp" => timestamp,
                 "Content-Type" => "application/json; charset=utf-8",
             )
+            current_region = Config.dc_region(config)
             signature = sign(method, path, headers, query_string, body_str, config)
             if !isnothing(signature)
                 headers["X-Api-Signature"] = signature
             end
         end
+
+        _check_dc_region(path, current_region, dc_region)
+        headers[DC_REGION_HEADER] = String(current_region)
+        config.enable_papertrading && (headers[PAPERTRADING_HEADER] = "true")
+        base_url = _regional_http_url(config, current_region)
+        full_url = base_url * path * (isempty(query_string) ? "" : "?" * query_string)
 
         if method == "GET"
             return HTTP.get(full_url; headers, client = HTTP_CLIENT, retries = RETRIES)
@@ -200,20 +238,30 @@ http_get(
     config::Config.Settings,
     path::String;
     params::Dict{String,Any} = Dict{String,Any}(),
-) = _http_request(config, "GET", path; params)
+    dc_region::Union{Symbol,Nothing} = nothing,
+) = _http_request(config, "GET", path; params, dc_region)
 
-http_post(config::Config.Settings, path::String; body::Dict = Dict()) =
-    _http_request(config, "POST", path; body)
+http_post(
+    config::Config.Settings,
+    path::String;
+    body::Dict = Dict(),
+    dc_region::Union{Symbol,Nothing} = nothing,
+) = _http_request(config, "POST", path; body, dc_region)
 
-http_put(config::Config.Settings, path::String; body::Dict = Dict()) =
-    _http_request(config, "PUT", path; body)
+http_put(
+    config::Config.Settings,
+    path::String;
+    body::Dict = Dict(),
+    dc_region::Union{Symbol,Nothing} = nothing,
+) = _http_request(config, "PUT", path; body, dc_region)
 
 http_delete(
     config::Config.Settings,
     path::String;
     params::Dict{String,Any} = Dict{String,Any}(),
     body::Union{Dict,Nothing} = nothing,
-) = _http_request(config, "DELETE", path; params, body)
+    dc_region::Union{Symbol,Nothing} = nothing,
+) = _http_request(config, "DELETE", path; params, body, dc_region)
 
 """
 refresh_token(config::Config.Settings, expired_at::String) -> Dict
@@ -331,7 +379,9 @@ function connect!(client::WSClient)
     end
 
     @info "正在连接到 WS 服务器: $(client.url)"
-    full_url = _websocket_url(client.url)
+    region = Config.dc_region(client.config)
+    full_url = _websocket_url(_regional_ws_url(client.url, region))
+    ws_headers = _routing_headers(client.config, region)
 
     # Reset auth signal in case this is a reconnect
     client.auth_event = Threads.Event()
@@ -342,6 +392,7 @@ function connect!(client::WSClient)
         try
             WebSockets.open(
                 full_url;
+                headers = ws_headers,
                 connect_timeout = WS_CONNECT_TIMEOUT,
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
                 write_idle_timeout = WS_WRITE_TIMEOUT,
@@ -682,11 +733,13 @@ function reconnect!(client::WSClient)
 
     errormonitor(@async begin
         try
-            full_url = _websocket_url(client.url)
+            region = Config.dc_region(client.config)
+            full_url = _websocket_url(_regional_ws_url(client.url, region))
 
             # 1. 物理连接
             WebSockets.open(
                 full_url;
+                headers = _routing_headers(client.config, region),
                 connect_timeout = WS_CONNECT_TIMEOUT,
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
                 write_idle_timeout = WS_WRITE_TIMEOUT,

@@ -44,6 +44,7 @@ export Command,
     OrderDetail,
     BalanceType,
     EstimateMaxPurchaseQuantityResponse,
+    AllExecutionsResponse,
     FrozenTransactionFee,
     CashInfo,
     AccountBalance,
@@ -63,7 +64,10 @@ export Command,
     ReplaceOrderOptions,
     GetHistoryExecutionsOptions,
     GetTodayExecutionsOptions,
+    GetAllExecutionsOptions,
     GetHistoryOrdersOptions,
+    GetUSHistoryOrders,
+    QueryUSOrdersOptions,
     GetTodayOrdersOptions,
     GetCashFlowOptions,
     GetFundPositionsOptions,
@@ -386,13 +390,17 @@ Order tag
     Normal = 1
     LongTerm = 2
     Grey = 3
-    MarginCall = 4
-    Offline = 5
-    Creditor = 6
-    Debtor = 7
-    NonExercise = 8
-    AllocatedSub = 9
 end
+
+function StructTypes.construct(::Type{OrderTag.T}, value::String; kw...)
+    value == "Gtc" && return OrderTag.LongTerm
+    value == "GTC" && return OrderTag.LongTerm
+    value == "Normal" && return OrderTag.Normal
+    value == "Grey" && return OrderTag.Grey
+    return OrderTag.UnknownTag
+end
+StructTypes.construct(::Type{OrderTag.T}, value::Symbol; kw...) =
+    StructTypes.construct(OrderTag.T, String(value); kw...)
 
 """
 Time in force type
@@ -431,7 +439,18 @@ Enable or disable outside regular trading hours
     RTH_ONLY = 1
     ANY_TIME = 2
     OVERNIGHT = 3
+    OptionPreMarket = 4
 end
+
+function StructTypes.construct(::Type{OutsideRTH.T}, value::String; kw...)
+    value == "RTH_ONLY" && return OutsideRTH.RTH_ONLY
+    value == "ANY_TIME" && return OutsideRTH.ANY_TIME
+    value == "OVERNIGHT" && return OutsideRTH.OVERNIGHT
+    value == "OPTION_PRE_MARKET" && return OutsideRTH.OptionPreMarket
+    return OutsideRTH.UnknownOutsideRth
+end
+StructTypes.construct(::Type{OutsideRTH.T}, value::Symbol; kw...) =
+    StructTypes.construct(OutsideRTH.T, String(value); kw...)
 
 """
 Commission free status
@@ -1082,6 +1101,13 @@ struct ExecutionResponse
 end
 StructTypes.StructType(::Type{ExecutionResponse}) = StructTypes.Struct()
 
+"""Paginated response from `GET /v3/trade/execution/all`."""
+struct AllExecutionsResponse
+    has_more::Bool
+    trades::Vector{Execution}
+end
+StructTypes.StructType(::Type{AllExecutionsResponse}) = StructTypes.Struct()
+
 # --- Request Option Structs ---
 
 Base.@kwdef struct SubmitOrderOptions
@@ -1098,7 +1124,11 @@ Base.@kwdef struct SubmitOrderOptions
     limit_offset::Union{Float64,Nothing} = nothing      # 指定价差，例如 "1.2" 表示价差1.2USD(如果是美股), TSLPAMT/TSLPPCT 订单必填
     trailing_amount::Union{Float64,Nothing} = nothing   # 跟踪金额, TSLPAMT订单必填
     trailing_percent::Union{Float64,Nothing} = nothing  # 跟踪涨跌幅，单位为百分比，例如 "2.5" 表示 "2.5%", TSLPPCT 订单必填
-    outside_rth::Union{String,Nothing} = nothing  # 是否允许盘前盘后，美股必填, RTH_ONLY - 不允许盘前盘后, ANY_TIME - 允许盘前盘后, OVERNIGHT - 夜盘
+    outside_rth::Union{OutsideRTH.T,AbstractString,Nothing} = nothing
+    limit_depth_level::Union{Int,Nothing} = nothing
+    trigger_count::Union{Int,Nothing} = nothing
+    monitor_price::Union{Float64,Nothing} = nothing
+    client_request_id::Union{String,Nothing} = nothing
 end
 
 Base.@kwdef struct ReplaceOrderOptions
@@ -1117,6 +1147,14 @@ Base.@kwdef struct GetTodayExecutionsOptions
     symbol::Union{String,Nothing} = nothing
 end
 
+Base.@kwdef struct GetAllExecutionsOptions
+    symbol::Union{String,Nothing} = nothing
+    order_id::Union{String,Nothing} = nothing
+    start_at::Union{Date,DateTime,Nothing} = nothing
+    end_at::Union{Date,DateTime,Nothing} = nothing
+    page::Union{Integer,Nothing} = nothing
+end
+
 Base.@kwdef struct GetHistoryOrdersOptions
     symbol::Union{String,Nothing} = nothing
     status::Union{Vector{OrderStatus.T},Nothing} = nothing
@@ -1124,6 +1162,17 @@ Base.@kwdef struct GetHistoryOrdersOptions
     start_at::Union{Date,Nothing} = nothing
     end_at::Union{Date,Nothing} = nothing
 end
+
+Base.@kwdef struct GetUSHistoryOrders
+    symbol::Union{String,Nothing} = nothing
+    side::OrderSide.T = OrderSide.UnknownSide
+    start_at::Int64 = 0
+    end_at::Int64 = 0
+    query_type::Int = 0
+    page::Int = 1
+    limit::Int = 20
+end
+const QueryUSOrdersOptions = GetUSHistoryOrders
 
 Base.@kwdef struct GetTodayOrdersOptions
     symbol::Union{String,Nothing} = nothing

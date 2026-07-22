@@ -6,7 +6,12 @@ using ..Constant
 using ..Errors: LongBridgeError
 using ..OAuth: OAuthHandle
 
-export Settings, config, from_toml, from_oauth
+export Settings,
+    config,
+    from_toml,
+    from_oauth,
+    enable_papertrading!,
+    dc_region
 
 """
 Configuration options for Longport SDK
@@ -34,6 +39,7 @@ mutable struct Settings
     trade_ws_url::String
     language::Language.T
     enable_overnight::Bool
+    enable_papertrading::Bool
     auth_mode::Symbol          # :apikey or :oauth
     oauth::Union{Nothing,OAuthHandle}
 
@@ -47,6 +53,7 @@ mutable struct Settings
         trade_ws_url::Union{String,Nothing} = DEFAULT_TRADE_WS_CN,
         language::Language.T = Language.ZH_CN,
         enable_overnight::Bool = true,   # 美股夜盘交易行情，需订阅US LV1实时行情并开启enable_overnight参数，否则会返回null
+        enable_papertrading::Bool = false,
     )
         new(
             app_key,
@@ -58,6 +65,7 @@ mutable struct Settings
             something(trade_ws_url, DEFAULT_TRADE_WS_CN),
             language,
             enable_overnight,
+            enable_papertrading,
             :apikey,
             nothing,
         )
@@ -66,6 +74,24 @@ end
 
 # Backwards-compat alias for the old lowercase name.
 const config = Settings
+
+"""Enable paper-trading routing for all subsequent API requests."""
+function enable_papertrading!(cfg::Settings)
+    cfg.enable_papertrading = true
+    return cfg
+end
+
+_credential_is_us(value::AbstractString) =
+    startswith(chopprefix(value, "Bearer "), "us_")
+
+"""Return `:us` or `:ap` from the configured credential prefixes."""
+function dc_region(cfg::Settings)
+    if cfg.auth_mode === :oauth
+        token = oauth_access_token(cfg.oauth)
+        return _credential_is_us(token) ? :us : :ap
+    end
+    return any(_credential_is_us, (cfg.app_key, cfg.app_secret, cfg.access_token)) ? :us : :ap
+end
 
 """
 Create a new `config` from TOML configuration file
@@ -88,6 +114,11 @@ function from_toml(path::AbstractString)
     http_url = String(get(config_dict, "http_url", DEFAULT_HTTP_URL_CN))
     quote_ws_url = String(get(config_dict, "quote_ws_url", DEFAULT_QUOTE_WS_CN))
     trade_ws_url = String(get(config_dict, "trade_ws_url", DEFAULT_TRADE_WS_CN))
+    enable_papertrading = Bool(get(
+        config_dict,
+        "enable_papertrading",
+        lowercase(get(ENV, "LONGBRIDGE_PAPERTRADING", "false")) == "true",
+    ))
 
     # Required fields
     required_keys = ["app_key", "app_secret", "access_token", "token_expire_time"]
@@ -151,6 +182,7 @@ function from_toml(path::AbstractString)
         http_url = http_url,
         quote_ws_url = quote_ws_url,
         trade_ws_url = trade_ws_url,
+        enable_papertrading = enable_papertrading,
     )
 end
 
@@ -205,6 +237,7 @@ function from_oauth(
     trade_ws_url::Union{String,Nothing} = DEFAULT_TRADE_WS_CN,
     language::Language.T = Language.ZH_CN,
     enable_overnight::Bool = true,
+    enable_papertrading::Bool = false,
 )
     cfg = Settings(
         oauth_handle.client_id,   # app_key = client_id
@@ -216,6 +249,7 @@ function from_oauth(
         trade_ws_url = trade_ws_url,
         language = language,
         enable_overnight = enable_overnight,
+        enable_papertrading = enable_papertrading,
     )
     cfg.auth_mode = :oauth
     cfg.oauth = oauth_handle

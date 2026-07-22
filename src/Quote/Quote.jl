@@ -1,6 +1,6 @@
 module Quote
 
-using ProtoBuf, JSON3, Dates, DataFrames, HTTP, EnumX
+using ProtoBuf, JSON3, Dates, DataFrames, HTTP, EnumX, StructTypes
 using Dates: datetime2unix
 using ..Config, ..QuotePush, ..Client, ..QuoteProtocol, ..ControlProtocol, ..Constant
 using ..Commands:
@@ -90,6 +90,7 @@ using ..Utils:
     lookup_counter_id,
     cache_counter_ids
 using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
+using ..USProtocol
 
 using ..Errors
 
@@ -147,6 +148,7 @@ export QuoteContext,
     realtime_candlesticks,
     subscribe_candlesticks,
     unsubscribe_candlesticks,
+    us_crypto_overview,
     FilingItem
 
 # Quote-specific command for WebSocket protobuf requests
@@ -1254,6 +1256,28 @@ function warrant_quote(ctx::QuoteContext, symbols::AbstractVector{<:AbstractStri
     return DataFrame(to_namedtuple(resp.secu_quote))
 end
 
+"""
+    us_crypto_overview(ctx, symbol) -> USCryptoOverview
+
+Get the US-region cryptocurrency overview (for example `"BTCUSD.BKKT"`).
+Requires credentials whose token/key prefix is `us_`.
+"""
+function us_crypto_overview(ctx::QuoteContext, symbol::AbstractString)
+    params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
+    resp = Errors.ApiResponse(
+        Client.http_get(
+            ctx.inner.config,
+            "/v1/us/gemini/crypto-overview";
+            params,
+            dc_region = :us,
+        ),
+    )
+    resp.code == 0 ||
+        @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+    result = USProtocol.construct_us(USCryptoOverview, resp.data)
+    return USProtocol.normalize_symbols!(result)
+end
+
 member_id(ctx::QuoteContext) = ctx.inner.member_id
 quote_level(ctx::QuoteContext) = ctx.inner.quote_level
 quote_package_details(ctx::QuoteContext) = ctx.inner.quote_package_details
@@ -1478,7 +1502,6 @@ end
 # v4.1.0 新增 HTTP-only 方法（直接走 Client.http_get/post，不经后台任务）
 # ════════════════════════════════════════════════════════════════════════
 
-using StructTypes
 
 # ── short_positions ────────────────────────────────────────────────────
 

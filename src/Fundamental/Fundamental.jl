@@ -7,6 +7,7 @@ using ..Client
 using ..Errors
 using ..Utils: symbol_to_counter_id
 using ..FundamentalProtocol
+using ..USProtocol
 
 export FundamentalContext,
     financial_report,
@@ -40,7 +41,16 @@ export FundamentalContext,
     valuation_comparison,
     etf_asset_allocation,
     macroeconomic_indicators,
-    macroeconomic
+    macroeconomic,
+    us_company_overview,
+    us_valuation_overview,
+    us_financial_overview,
+    us_financial_statement,
+    us_key_financial_metrics,
+    us_analyst_consensus,
+    us_etf_dividend_info,
+    us_company_dividends,
+    us_etf_files
 
 """
     FundamentalContext(config::Config.Settings)
@@ -54,6 +64,126 @@ end
 _check(resp) =
     resp.code == 0 ||
     @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+
+function _us_get(ctx::FundamentalContext, path::String, ::Type{T}; params) where {T}
+    resp = ApiResponse(Client.http_get(ctx.config, path; params, dc_region = :us))
+    _check(resp)
+    return USProtocol.construct_us(T, resp.data)
+end
+
+_us_symbol_params(symbol::AbstractString) =
+    Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
+
+"""Get the US company overview. Requires US-region credentials."""
+us_company_overview(ctx::FundamentalContext, symbol::AbstractString) =
+    _us_get(
+        ctx,
+        "/v1/us/stock-info/company-overview",
+        USCompanyOverview;
+        params = _us_symbol_params(symbol),
+    )
+
+"""Get the US valuation overview. Requires US-region credentials."""
+us_valuation_overview(ctx::FundamentalContext, symbol::AbstractString) =
+    _us_get(
+        ctx,
+        "/v1/us/stock-info/valuation-overview",
+        USValuationOverview;
+        params = _us_symbol_params(symbol),
+    )
+
+function us_financial_overview(
+    ctx::FundamentalContext,
+    symbol::AbstractString,
+    report::AbstractString,
+)
+    params = _us_symbol_params(symbol)
+    params["report"] = String(report)
+    return _us_get(
+        ctx,
+        "/v1/us/stock-info/finn-overview",
+        USFinancialOverview;
+        params,
+    )
+end
+
+function us_financial_statement(
+    ctx::FundamentalContext,
+    symbol::AbstractString,
+    kind::AbstractString,
+    report::AbstractString,
+)
+    params = _us_symbol_params(symbol)
+    params["kind"] = String(kind)
+    params["report"] = String(report)
+    return _us_get(
+        ctx,
+        "/v1/us/quote/financials/statements",
+        USFinancialStatement;
+        params,
+    )
+end
+
+function us_key_financial_metrics(
+    ctx::FundamentalContext,
+    symbol::AbstractString,
+    report::AbstractString,
+)
+    params = _us_symbol_params(symbol)
+    params["report"] = String(report)
+    return _us_get(
+        ctx,
+        "/v1/us/stock-info/fin-keyfactor",
+        USKeyFinancialMetrics;
+        params,
+    )
+end
+
+function us_analyst_consensus(
+    ctx::FundamentalContext,
+    symbol::AbstractString,
+    report::AbstractString,
+)
+    params = _us_symbol_params(symbol)
+    params["report"] = String(report)
+    return _us_get(
+        ctx,
+        "/v1/us/stock-info/fin-consensus",
+        USAnalystConsensus;
+        params,
+    )
+end
+
+us_etf_dividend_info(ctx::FundamentalContext, symbol::AbstractString) =
+    _us_get(
+        ctx,
+        "/v1/us/stock-info/etf-dividend-info",
+        USETFDividendInfo;
+        params = _us_symbol_params(symbol),
+    )
+
+us_company_dividends(ctx::FundamentalContext, symbol::AbstractString) =
+    _us_get(
+        ctx,
+        "/v1/us/stock-info/company-dividends",
+        USCompanyDividends;
+        params = _us_symbol_params(symbol),
+    )
+
+function us_etf_files(
+    ctx::FundamentalContext,
+    symbol::AbstractString;
+    size::Union{Integer,Nothing} = nothing,
+)
+    params = _us_symbol_params(symbol)
+    isnothing(size) || (params["size"] = Int(size))
+    return _us_get(
+        ctx,
+        "/v1/us/stock-info/etf-files",
+        USETFFilesResponse;
+        params,
+    )
+end
 
 # ── 1. financial_report ────────────────────────────────────────────
 

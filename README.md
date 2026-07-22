@@ -6,7 +6,7 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.8.9** — lower-allocation WebSocket/cache paths, broader Julia collection inputs, safer script entry points, and expanded regression tests.
+Latest release: **v0.9.0** — US data-center routing, paper-trading support, typed US fundamental/quote/trade/asset APIs, and paginated execution history.
 
 References:
 
@@ -69,6 +69,7 @@ token_expire_time = "2025-07-22T00:00:00"  # ISO8601 format, UTC time
 # http_url = "https://openapi.longportapp.com"
 # quote_ws_url = "wss://openapi-quote.longportapp.com"
 # trade_ws_url = "wss://openapi-trade.longportapp.com"
+# enable_papertrading = false
 ```
 
 ```julia
@@ -76,6 +77,12 @@ using LongBridge
 
 cfg = Config.from_toml()
 ```
+
+Credentials prefixed with `us_` automatically use the US data center. To route
+requests to a paper-trading account, set `enable_papertrading = true` in TOML or
+call `enable_papertrading!(cfg)` before creating a context. US-only endpoints,
+such as `us_company_overview`, `us_crypto_overview`, `us_query_orders`, and
+`us_asset_overview`, reject non-US credentials with a clear error.
 
 ### Quotes
 

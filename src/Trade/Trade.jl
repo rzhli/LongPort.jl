@@ -9,7 +9,8 @@ using ..Client
 using ..Errors
 using ..TradePush
 using ..TradeProtocol
-using ..Utils: to_china_time, safeparse
+using ..USProtocol
+using ..Utils: to_china_time, safeparse, symbol_to_counter_id
 using ..Commands:
     AbstractCommand, HttpGetCmd, HttpPostCmd, HttpPutCmd, HttpDeleteCmd, DisconnectCmd
 
@@ -33,6 +34,11 @@ export TradeContext,
     margin_ratio,
     order_detail,
     estimate_max_purchase_quantity,
+    all_executions,
+    us_query_orders,
+    us_order_detail,
+    us_asset_overview,
+    us_realized_pl,
     set_on_order_changed
 
 # Trade-specific commands for WebSocket subscription
@@ -299,6 +305,8 @@ function to_dict(opts)
                 # Coerce to homogeneous Vector{String} to avoid Union widening
                 # from the previous broad comprehension.
                 d[key] = String[v isa Enum ? string(Int(v)) : string(v) for v in val]
+            elseif val isa OutsideRTH.T
+                d[key] = _outside_rth_str(val)
             elseif val isa Enum
                 d[key] = Int(val)
             else
@@ -308,6 +316,12 @@ function to_dict(opts)
     end
     d
 end
+
+_outside_rth_str(value::OutsideRTH.T) =
+    value === OutsideRTH.RTH_ONLY ? "RTH_ONLY" :
+    value === OutsideRTH.ANY_TIME ? "ANY_TIME" :
+    value === OutsideRTH.OVERNIGHT ? "OVERNIGHT" :
+    value === OutsideRTH.OptionPreMarket ? "OPTION_PRE_MARKET" : "UNKNOWN"
 
 # Helper: parse optional timestamp
 _parse_optional_time(v) = (isempty(v) || v == "0") ? nothing : to_china_time(v)
@@ -391,6 +405,44 @@ function today_executions(ctx::TradeContext; symbol::Union{String,Nothing} = not
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
 end
+
+"""
+    all_executions(ctx; symbol=nothing, order_id=nothing, start_at=nothing,
+                   end_at=nothing, page=nothing) -> AllExecutionsResponse
+
+Get paginated executions from `GET /v3/trade/execution/all`.
+"""
+function all_executions(
+    ctx::TradeContext;
+    symbol::Union{AbstractString,Nothing} = nothing,
+    order_id::Union{AbstractString,Nothing} = nothing,
+    start_at::Union{Date,DateTime,Nothing} = nothing,
+    end_at::Union{Date,DateTime,Nothing} = nothing,
+    page::Union{Integer,Nothing} = nothing,
+)
+    options = GetAllExecutionsOptions(
+        symbol = isnothing(symbol) ? nothing : String(symbol),
+        order_id = isnothing(order_id) ? nothing : String(order_id),
+        start_at = start_at,
+        end_at = end_at,
+        page = page,
+    )
+    cmd = HttpGetCmd("/v3/trade/execution/all", to_dict(options), Channel(1))
+    resp = request(ctx, cmd)
+    resp.code == 0 ||
+        @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+    return JSON3.read(JSON3.write(resp.data), AllExecutionsResponse)
+end
+
+all_executions(ctx::TradeContext, options::GetAllExecutionsOptions) =
+    all_executions(
+        ctx;
+        symbol = options.symbol,
+        order_id = options.order_id,
+        start_at = options.start_at,
+        end_at = options.end_at,
+        page = options.page,
+    )
 
 function history_orders(
     ctx::TradeContext;
@@ -623,6 +675,95 @@ function estimate_max_purchase_quantity(
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
 end
+
+function _check_us_response(resp)
+    resp.code == 0 ||
+        @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
+    return resp.data
+end
+
+"""Query the paginated US-region order list."""
+function _us_query_orders_body(options::GetUSHistoryOrders, now_ts::Int64)
+    action =
+        options.side === OrderSide.Buy ? 1 : options.side === OrderSide.Sell ? 2 : 0
+    counter_ids =
+        isnothing(options.symbol) || isempty(options.symbol) ? String[] :
+        [symbol_to_counter_id(options.symbol)]
+    start_at = options.start_at == 0 ? now_ts - 90 * 24 * 3600 : options.start_at
+    end_at = options.end_at == 0 ? now_ts : options.end_at
+    return Dict{String,Any}(
+        "account_channel" => "",
+        "action" => action,
+        "start_at" => Float64(start_at),
+        "end_at" => Float64(end_at),
+        "counter_ids" => counter_ids,
+        "security_types" => String[],
+        "query_type" => options.query_type,
+        "page" => options.page <= 0 ? 1 : options.page,
+        "limit" => options.limit <= 0 ? 20 : options.limit,
+        "query_version" => Float64(now_ts),
+    )
+end
+
+function us_query_orders(ctx::TradeContext, options::GetUSHistoryOrders = GetUSHistoryOrders())
+    body = _us_query_orders_body(options, floor(Int64, time()))
+    resp = ApiResponse(
+        Client.http_post(
+            ctx.inner.config,
+            "/v1/us/orders/query";
+            body,
+            dc_region = :us,
+        ),
+    )
+    return USProtocol.construct_us(QueryUSOrdersResponse, _check_us_response(resp))
+end
+
+"""Get full detail for one US-region order."""
+function us_order_detail(ctx::TradeContext, order_id::AbstractString)
+    resp = ApiResponse(
+        Client.http_get(
+            ctx.inner.config,
+            "/v1/us/orders/$(String(order_id))";
+            dc_region = :us,
+        ),
+    )
+    result = USProtocol.construct_us(USOrderDetailResponse, _check_us_response(resp))
+    return USProtocol.normalize_symbols!(result)
+end
+
+"""Get the US account asset snapshot."""
+function us_asset_overview(ctx::TradeContext)
+    resp = ApiResponse(
+        Client.http_get(ctx.inner.config, "/v1/us/assets/overview"; dc_region = :us),
+    )
+    result = USProtocol.construct_us(USAssetOverview, _check_us_response(resp))
+    return USProtocol.normalize_symbols!(result)
+end
+
+"""Get realized profit and loss for a US-region account."""
+function us_realized_pl(
+    ctx::TradeContext;
+    currency::AbstractString = "USD",
+    category::Union{AbstractString,Nothing} = nothing,
+)
+    params = Dict{String,Any}("currency" => String(currency))
+    isnothing(category) || isempty(category) || (params["category"] = String(category))
+    resp = ApiResponse(
+        Client.http_get(
+            ctx.inner.config,
+            "/v1/us/assets/pl/realized";
+            params,
+            dc_region = :us,
+        ),
+    )
+    return USProtocol.construct_us(USRealizedPL, _check_us_response(resp))
+end
+
+us_realized_pl(
+    ctx::TradeContext,
+    currency::AbstractString;
+    category::Union{AbstractString,Nothing} = nothing,
+) = us_realized_pl(ctx; currency, category)
 
 function disconnect!(ctx::TradeContext)
     inner = ctx.inner
