@@ -211,12 +211,25 @@ function _http_request(
         full_url = base_url * path * (isempty(query_string) ? "" : "?" * query_string)
 
         if method == "GET"
-            return HTTP.get(full_url; headers, client = HTTP_CLIENT, retries = RETRIES)
+            return HTTP.get(
+                full_url;
+                headers,
+                client = HTTP_CLIENT,
+                retries = RETRIES,
+                status_exception = false,
+            )
         elseif method == "DELETE"
             # DELETE 可带 body（Alert/Sharelist 等接口需要）
             kw =
-                isnothing(body) ? (; headers, client = HTTP_CLIENT, retries = RETRIES) :
-                (; headers, body = body_str, client = HTTP_CLIENT, retries = RETRIES)
+                isnothing(body) ?
+                (; headers, client = HTTP_CLIENT, retries = RETRIES, status_exception = false) :
+                (;
+                    headers,
+                    body = body_str,
+                    client = HTTP_CLIENT,
+                    retries = RETRIES,
+                    status_exception = false,
+                )
             return HTTP.delete(full_url; kw...)
         else
             http_fn = method == "POST" ? HTTP.post : HTTP.put
@@ -226,6 +239,7 @@ function _http_request(
                 body = body_str,
                 client = HTTP_CLIENT,
                 retries = RETRIES,
+                status_exception = false,
             )
         end
     catch e

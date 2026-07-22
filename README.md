@@ -6,7 +6,23 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.0** — US data-center routing, paper-trading support, typed US fundamental/quote/trade/asset APIs, and paginated execution history.
+Latest release: **v0.9.1** — upstream v4.4.1 synchronization, US data-center routing, paper-trading support, and typed US fundamental/quote/trade/asset APIs.
+
+### v0.9.1 migration notes
+
+- `all_executions` is temporarily unavailable while the upstream endpoint is being restored. `GetAllExecutionsOptions` and `AllExecutionsResponse` remain defined for a future re-enable; use `today_executions` or `history_executions` in the meantime.
+- Non-OpenAPI HTTP error pages are reported as `UnexpectedHttpResponse`, preserving the status, trace ID, headers, and raw body for diagnosis:
+
+  ```julia
+  try
+      response = today_executions(ctx)
+  catch err
+      if err isa UnexpectedHttpResponse
+          @error "unexpected upstream response" status=err.status trace_id=err.trace_id body=err.body
+      end
+      rethrow()
+  end
+  ```
 
 References:
 

@@ -6,7 +6,23 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.0** —— 新增美国数据中心自动路由、模拟交易支持、类型化的美区基本面/行情/交易/资产接口，以及分页成交记录查询。
+最新版本：**v0.9.1** —— 同步上游 v4.4.1，支持美国数据中心自动路由、模拟交易，以及类型化的美区基本面/行情/交易/资产接口。
+
+### v0.9.1 迁移说明
+
+- 上游接口恢复前，`all_executions` 暂时不可用。`GetAllExecutionsOptions` 和 `AllExecutionsResponse` 类型仍保留，后续接口恢复后可重新启用；当前请使用 `today_executions` 或 `history_executions`。
+- 中间代理返回非 OpenAPI 标准错误页时，会抛出 `UnexpectedHttpResponse`，并保留状态码、trace ID、响应头和原始 body，便于定位问题：
+
+  ```julia
+  try
+      response = today_executions(ctx)
+  catch err
+      if err isa UnexpectedHttpResponse
+          @error "上游返回非标准响应" status=err.status trace_id=err.trace_id body=err.body
+      end
+      rethrow()
+  end
+  ```
 
 参考文档：
 

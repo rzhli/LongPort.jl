@@ -34,6 +34,9 @@ include("test_v0_8_6_sync.jl")
 # v0.9.0 / upstream v4.4.0 (US-region APIs, DC routing, paper trading)
 include("test_v0_9_0_sync.jl")
 
+# v0.9.1 / upstream v4.4.1 (temporarily disabled all_executions, rich HTTP errors)
+include("test_v0_9_1_sync.jl")
+
 @testset "Config defaults" begin
     direct_cfg = Settings("k", "s", "t", DateTime(2099, 1, 1))
     @test direct_cfg.http_url == LongBridge.Constant.DEFAULT_HTTP_URL_CN

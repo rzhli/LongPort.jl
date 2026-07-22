@@ -34,7 +34,6 @@ export TradeContext,
     margin_ratio,
     order_detail,
     estimate_max_purchase_quantity,
-    all_executions,
     us_query_orders,
     us_order_detail,
     us_asset_overview,
@@ -405,44 +404,6 @@ function today_executions(ctx::TradeContext; symbol::Union{String,Nothing} = not
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
 end
-
-"""
-    all_executions(ctx; symbol=nothing, order_id=nothing, start_at=nothing,
-                   end_at=nothing, page=nothing) -> AllExecutionsResponse
-
-Get paginated executions from `GET /v3/trade/execution/all`.
-"""
-function all_executions(
-    ctx::TradeContext;
-    symbol::Union{AbstractString,Nothing} = nothing,
-    order_id::Union{AbstractString,Nothing} = nothing,
-    start_at::Union{Date,DateTime,Nothing} = nothing,
-    end_at::Union{Date,DateTime,Nothing} = nothing,
-    page::Union{Integer,Nothing} = nothing,
-)
-    options = GetAllExecutionsOptions(
-        symbol = isnothing(symbol) ? nothing : String(symbol),
-        order_id = isnothing(order_id) ? nothing : String(order_id),
-        start_at = start_at,
-        end_at = end_at,
-        page = page,
-    )
-    cmd = HttpGetCmd("/v3/trade/execution/all", to_dict(options), Channel(1))
-    resp = request(ctx, cmd)
-    resp.code == 0 ||
-        @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    return JSON3.read(JSON3.write(resp.data), AllExecutionsResponse)
-end
-
-all_executions(ctx::TradeContext, options::GetAllExecutionsOptions) =
-    all_executions(
-        ctx;
-        symbol = options.symbol,
-        order_id = options.order_id,
-        start_at = options.start_at,
-        end_at = options.end_at,
-        page = options.page,
-    )
 
 function history_orders(
     ctx::TradeContext;

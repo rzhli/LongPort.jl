@@ -126,8 +126,6 @@ end
     @test hasmethod(us_order_detail, Tuple{TradeContext,String})
     @test hasmethod(us_asset_overview, Tuple{TradeContext})
     @test hasmethod(us_realized_pl, Tuple{TradeContext,String})
-    @test hasmethod(all_executions, Tuple{TradeContext,GetAllExecutionsOptions})
-
     for name in (
         :USCompanyOverview,
         :USCryptoOverview,

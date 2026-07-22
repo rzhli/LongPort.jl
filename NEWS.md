@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.9.1 (2026-07-22)
+
+### Upstream v4.4.1 synchronization ([release](https://github.com/longbridge/openapi/releases/tag/v4.4.1))
+
+- Temporarily disables `all_executions` until the upstream API is available again; the request and response model types remain available for a future restoration.
+- Preserves the HTTP status, `x-trace-id`, complete response headers, and raw body in `UnexpectedHttpResponse` when an intermediary returns a non-OpenAPI error response.
+
 ## v0.9.0 (2026-07-22)
 
 ### US data-center and paper-trading support

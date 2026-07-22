@@ -94,6 +94,8 @@ export Quote,
     disconnect!,                                     # 断开连接
     VERSION
 
+export LongBridgeError, UnexpectedHttpResponse, ApiResponse
+
 # --- Config ---
 export Settings, config, from_oauth                        # 配置加载（config 是 Settings 的兼容别名）
 export enable_papertrading!, dc_region
@@ -222,8 +224,7 @@ export us_company_overview,
     us_asset_overview,
     us_realized_pl,
     us_query_orders,
-    us_order_detail,
-    all_executions
+    us_order_detail
 
 export USRankTag,
     USSharelistItem,
