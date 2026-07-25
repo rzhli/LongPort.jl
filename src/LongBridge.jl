@@ -10,6 +10,21 @@ const VERSION = TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["versio
 # Forward declaration for multi-dispatch across modules
 function disconnect! end
 
+"""
+    to_market_time(timestamp, timezone)
+
+Convert a UTC `DateTime` or Unix timestamp to a timezone-aware market time.
+Install and load the optional TimeZones.jl package to enable this conversion.
+The `timezone` argument should be an IANA name such as `"America/New_York"`.
+"""
+function to_market_time(args...)
+    throw(
+        ArgumentError(
+            "to_market_time requires TimeZones.jl; install it and load it with `using TimeZones`",
+        ),
+    )
+end
+
 # Core Modules
 include("Core/Constant.jl")
 include("Core/Errors.jl")
@@ -84,6 +99,7 @@ using .DCA
 using .Content
 using .Asset
 using .Screener
+using .Utils: utc_iso8601
 
 #= ==================== Exports ==================== =#
 
@@ -92,6 +108,8 @@ export Quote,
     Trade,
     Config,
     disconnect!,                                     # 断开连接
+    to_market_time,
+    utc_iso8601,
     VERSION
 
 export LongBridgeError, UnexpectedHttpResponse, ApiResponse
@@ -151,6 +169,8 @@ export trading_session,
     participants,
     member_id,
     quote_level,
+    subscribe_limit,
+    history_candlestick_limit,
     quote_package_details,
     filings,
     security_list

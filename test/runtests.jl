@@ -37,6 +37,9 @@ include("test_v0_9_0_sync.jl")
 # v0.9.1 / upstream v4.4.1 (temporarily disabled all_executions, rich HTTP errors)
 include("test_v0_9_1_sync.jl")
 
+# v0.9.2 / quote-profile limits, explicit candlestick timestamp semantics, OAuth routing fix
+include("test_v0_9_2_release.jl")
+
 @testset "Config defaults" begin
     direct_cfg = Settings("k", "s", "t", DateTime(2099, 1, 1))
     @test direct_cfg.http_url == LongBridge.Constant.DEFAULT_HTTP_URL_CN
@@ -206,4 +209,13 @@ end
     @test cfg.app_secret == ""
     @test !isnothing(cfg.oauth)
     @test cfg.oauth === handle
+    @test dc_region(cfg) === :ap
+
+    handle.token = OAuthToken(
+        "test-oauth-client",
+        "us_test-access",
+        "test-refresh",
+        UInt64(floor(time())) + 7200,
+    )
+    @test dc_region(cfg) === :us
 end

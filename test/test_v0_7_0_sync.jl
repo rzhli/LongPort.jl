@@ -108,6 +108,8 @@ end
     resp_bytes = vcat(
         UInt8[0x08, 0x2A],                                                          # member_id=42
         UInt8[0x12, 0x03, 0x4C, 0x56, 0x32],                                        # quote_level="LV2"
+        UInt8[0x18, 0x7B],                                                          # subscribe_limit=123
+        UInt8[0x20, 0xC8, 0x03],                                                    # history_candlestick_limit=456
         UInt8[0x32, UInt8(length(quote_level_detail_body))], quote_level_detail_body, # field 6
     )
 
@@ -115,6 +117,8 @@ end
     resp = ProtoBuf.decode(dec, UserQuoteProfileResponse)
     @test resp.member_id == 42
     @test resp.quote_level == "LV2"
+    @test resp.subscribe_limit == 123
+    @test resp.history_candlestick_limit == 456
     @test length(resp.quote_package_details) == 1
     pkg = resp.quote_package_details[1]
     @test pkg.key == "k1"
@@ -122,6 +126,37 @@ end
     @test pkg.description == "Desc"
     @test pkg.start_at == unix2datetime(1700000000)
     @test pkg.end_at == unix2datetime(1800000000)
+
+    legacy = UserQuoteProfileResponse(42, "LV2", QuotePackageDetail[])
+    @test legacy.subscribe_limit == 0
+    @test legacy.history_candlestick_limit == 0
+end
+
+@testset "Candlestick UTC timestamps" begin
+    timestamp = Int64(1781724600)
+    candle = LongBridge.QuoteProtocol.Candlestick(
+        381.3299,
+        381.59,
+        380.35,
+        382.165,
+        12_204,
+        4_653_648.315,
+        timestamp,
+        TradeSession.Intraday,
+    )
+    response = LongBridge.QuoteProtocol.SecurityCandlestickResponse("COHR.US", [candle])
+
+    default_df = LongBridge.Quote._candlestick_dataframe(response)
+    @test default_df.timestamp == [DateTime(2026, 6, 17, 19, 30)]
+    @test !hasproperty(default_df, :timestamp_unix)
+
+    raw_df = LongBridge.Quote._candlestick_dataframe(
+        response;
+        include_timestamp_unix = true,
+    )
+    @test raw_df.timestamp_unix == [timestamp]
+    @test utc_iso8601(raw_df.timestamp[1]) == "2026-06-17T19:30:00Z"
+    @test utc_iso8601(timestamp) == "2026-06-17T19:30:00Z"
 end
 
 @testset "realtime_quote / quote_snapshot signatures" begin
@@ -142,8 +177,13 @@ end
         :GetStatementListResponse, :GetStatementResponse,
         # Quote additions
         :quote_snapshot, :filings, :FilingItem,
+        :subscribe_limit, :history_candlestick_limit,
         :quote_package_details, :QuotePackageDetail,
+        :utc_iso8601, :to_market_time,
     )
         @test isdefined(LongBridge, s)
     end
+
+    @test hasmethod(subscribe_limit, Tuple{QuoteContext})
+    @test hasmethod(history_candlestick_limit, Tuple{QuoteContext})
 end

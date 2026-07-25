@@ -4,7 +4,7 @@ using TOML
 using HTTP, JSON3, Dates
 using ..Constant
 using ..Errors: LongBridgeError
-using ..OAuth: OAuthHandle
+using ..OAuth: OAuthHandle, access_token as oauth_access_token
 
 export Settings,
     config,

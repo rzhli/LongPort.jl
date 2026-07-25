@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.9.2 (2026-07-25)
+
+- Decodes and exposes the `subscribe_limit` and `history_candlestick_limit` values from `QueryUserQuoteProfile` via `QuoteContext` accessors.
+- Documents historical candlestick timestamps as UTC-semantic `DateTime` values and adds opt-in `timestamp_unix` output plus `utc_iso8601` formatting.
+- Adds an optional `TimeZones.jl` extension for explicit market-time conversion through `to_market_time` without changing existing UTC-compatible columns.
+- Fixes OAuth data-center routing in `Config.dc_region` by correctly resolving the OAuth access token.
+
 ## v0.9.1 (2026-07-22)
 
 ### Upstream v4.4.1 synchronization ([release](https://github.com/longbridge/openapi/releases/tag/v4.4.1))

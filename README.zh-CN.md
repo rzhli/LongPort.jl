@@ -6,7 +6,14 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.1** —— 同步上游 v4.4.1，支持美国数据中心自动路由、模拟交易，以及类型化的美区基本面/行情/交易/资产接口。
+最新版本：**v0.9.2** —— 新增账户行情限制、明确的 UTC/原始 K 线时间戳、可选市场时区转换，并修复 OAuth 数据中心路由。
+
+### v0.9.2 迁移说明
+
+- `subscribe_limit(ctx)` 和 `history_candlestick_limit(ctx)` 暴露 `QueryUserQuoteProfile` 返回的账户限制；profile 加载完成前返回 `nothing`。
+- 为兼容现有代码，历史 K 线 `timestamp` 仍是不带时区但具有 UTC 语义的 `DateTime`。设置 `include_timestamp_unix=true` 可保留原始 Unix 秒数；用 `utc_iso8601` 输出明确的 `Z`，或安装 `TimeZones.jl` 后调用 `to_market_time` 转换为市场本地时间。
+- SDK 不会补齐或合成缺失 K 线，仍保留上游原始响应。
+- OAuth 配置现在能够正确读取 access token 并选择 API 数据中心，不再触发 `oauth_access_token` 未定义错误。
 
 ### v0.9.1 迁移说明
 
@@ -139,6 +146,18 @@ using Dates
 history_data = history_candlesticks_by_date(
     ctx, "700.HK", CandlePeriod.DAY, AdjustType.NO_ADJUST; start_date=Date(2023, 1, 1), end_date=Date(2023, 2, 1)
 )
+
+# K 线 timestamp 使用 UTC 语义的 DateTime；如需保留原始 Unix 秒数：
+history_data = history_candlesticks_by_date(
+    ctx, "COHR.US", CandlePeriod.ONE_MINUTE, AdjustType.NO_ADJUST;
+    start_date=Date(2026, 6, 17), end_date=Date(2026, 6, 18),
+    include_timestamp_unix=true,
+)
+
+# 可选的带时区展示（需要安装一次 TimeZones.jl）：
+# using Pkg; Pkg.add("TimeZones")
+# using TimeZones
+# to_market_time(history_data.timestamp[1], "America/New_York")
 
 # 获取标的的期权链到期日列表
 expiry_dates = option_chain_expiry_date_list(ctx, "AAPL.US")
@@ -417,6 +436,12 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `realtime_quote(ctx, symbol_or_symbols)`: 从本地缓存读取最新推送的行情（需先 `subscribe`），与 `realtime_depth/brokers/trades` 语义一致
 - `filings(ctx, symbol)`: 公司公告列表（REST `/v1/quote/filings`），返回 `Vector{FilingItem}`
 - `member_id(ctx)` / `quote_level(ctx)` / `quote_package_details(ctx)`: 连接后通过 `QueryUserQuoteProfile` 拉取的真实值（v0.6.x 是零值桩）
+- `subscribe_limit(ctx)` / `history_candlestick_limit(ctx)`: `QueryUserQuoteProfile` 返回的账户限制；profile 尚未加载时返回 `nothing`
+
+历史 K 线的 `timestamp` 是不带时区的 `DateTime`，但其语义为 UTC。可用
+`utc_iso8601` 输出带 `Z` 的明确 UTC 字符串；或安装 TimeZones.jl 后调用
+`to_market_time(timestamp, "America/New_York")` 转换为交易所本地时间。
+设置 `include_timestamp_unix=true` 会增加原始 Unix 秒数列 `timestamp_unix`，默认列结构不变。
 
 ### 账户结算单（AssetContext，v0.7.0 新增）
 - `AssetContext(config)`: 创建上下文（HTTP-only，无需 disconnect）

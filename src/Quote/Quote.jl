@@ -129,6 +129,8 @@ export QuoteContext,
     calc_indexes,
     member_id,
     quote_level,
+    subscribe_limit,
+    history_candlestick_limit,
     quote_package_details,
     filings,
     option_chain_expiry_date_list,
@@ -180,6 +182,8 @@ mutable struct InnerQuoteContext
     # Info from Core
     member_id::Int64
     quote_level::String
+    subscribe_limit::Union{Nothing,Int32}
+    history_candlestick_limit::Union{Nothing,Int32}
     quote_package_details::Vector{QuotePackageDetail}
 end
 
@@ -309,7 +313,7 @@ function run_quote_loop(
                 _resubscribe_quote!(inner)
             end
 
-            # Fetch user profile (member_id / quote_level / quote_package_details)
+            # Fetch user profile and account quote limits.
             try
                 lang = inner.config.language
                 lang_str =
@@ -330,6 +334,8 @@ function run_quote_loop(
                     profile = ProtoBuf.decode(decoder, UserQuoteProfileResponse)
                     inner.member_id = profile.member_id
                     inner.quote_level = profile.quote_level
+                    inner.subscribe_limit = profile.subscribe_limit
+                    inner.history_candlestick_limit = profile.history_candlestick_limit
                     inner.quote_package_details = profile.quote_package_details
                 end
             catch e
@@ -570,6 +576,8 @@ function QuoteContext(config::Config.Settings)
         # Core info
         0,
         "",
+        nothing,
+        nothing,
         QuotePackageDetail[],
     )
 
@@ -703,6 +711,50 @@ realtime_quote(ctx::QuoteContext, symbol::AbstractString) = get_quote(ctx.inner.
 realtime_quote(ctx::QuoteContext, symbols::AbstractVector{<:AbstractString}) =
     [get_quote(ctx.inner.store, s) for s in symbols]
 
+function _candlestick_dataframe(
+    resp::SecurityCandlestickResponse;
+    include_timestamp_unix::Bool = false,
+)
+    data = if include_timestamp_unix
+        map(resp.candlesticks) do c
+            (
+                symbol = resp.symbol,
+                close = c.close,
+                open = c.open,
+                low = c.low,
+                high = c.high,
+                volume = c.volume,
+                turnover = c.turnover,
+                timestamp = unix2datetime(c.timestamp),
+                timestamp_unix = c.timestamp,
+                trade_session = c.trade_session,
+            )
+        end
+    else
+        map(resp.candlesticks) do c
+            (
+                symbol = resp.symbol,
+                close = c.close,
+                open = c.open,
+                low = c.low,
+                high = c.high,
+                volume = c.volume,
+                turnover = c.turnover,
+                timestamp = unix2datetime(c.timestamp),
+                trade_session = c.trade_session,
+            )
+        end
+    end
+    return DataFrame(data)
+end
+
+"""
+    candlesticks(ctx, symbol, period=DAY, count=365; kwargs...) -> DataFrame
+
+Get recent candlesticks. The `timestamp` column is a timezone-naive `DateTime`
+whose value is UTC. Set `include_timestamp_unix=true` to include the exact raw
+Unix-seconds value in a `timestamp_unix` column.
+"""
 function candlesticks(
     ctx::QuoteContext,
     symbol::AbstractString,
@@ -710,6 +762,7 @@ function candlesticks(
     count::Int64 = 365;
     trade_sessions::TradeSession.T = TradeSession.Intraday,
     adjust_type::AdjustType.T = AdjustType.FORWARD_ADJUST,
+    include_timestamp_unix::Bool = false,
 )
     req = SecurityCandlestickRequest(String(symbol), period, count, adjust_type, trade_sessions)
     cmd = GenericRequestCmd(
@@ -720,22 +773,16 @@ function candlesticks(
     )
     resp = request(ctx, cmd)
 
-    data = map(resp.candlesticks) do c
-        (
-            symbol = resp.symbol,
-            close = c.close,
-            open = c.open,
-            low = c.low,
-            high = c.high,
-            volume = c.volume,
-            turnover = c.turnover,
-            timestamp = unix2datetime(c.timestamp),
-            trade_session = c.trade_session,
-        )
-    end
-    return DataFrame(data)
+    return _candlestick_dataframe(resp; include_timestamp_unix)
 end
 
+"""
+    history_candlesticks_by_offset(ctx, symbol, period, adjust_type, direction, count; kwargs...) -> DataFrame
+
+Get historical candlesticks relative to an offset. Returned `timestamp` values
+are UTC-semantic `DateTime`s. Set `include_timestamp_unix=true` to retain the
+raw Unix-seconds value in a `timestamp_unix` column.
+"""
 function history_candlesticks_by_offset(
     ctx::QuoteContext,
     symbol::AbstractString,
@@ -745,6 +792,7 @@ function history_candlesticks_by_offset(
     count::Int;
     date::Union{DateTime,Nothing} = nothing,
     trade_sessions::TradeSession.T = TradeSession.Intraday,
+    include_timestamp_unix::Bool = false,
 )
 
     offset_request = OffsetQuery(
@@ -771,22 +819,17 @@ function history_candlesticks_by_offset(
     )
     resp = request(ctx, cmd)
 
-    data = map(resp.candlesticks) do c
-        (
-            symbol = resp.symbol,
-            close = c.close,
-            open = c.open,
-            low = c.low,
-            high = c.high,
-            volume = c.volume,
-            turnover = c.turnover,
-            timestamp = unix2datetime(c.timestamp),
-            trade_session = c.trade_session,
-        )
-    end
-    return DataFrame(data)
+    return _candlestick_dataframe(resp; include_timestamp_unix)
 end
 
+"""
+    history_candlesticks_by_date(ctx, symbol, period, adjust_type; kwargs...) -> DataFrame
+
+Get historical candlesticks for a date range. Returned `timestamp` values are
+UTC-semantic `DateTime`s; for example, `2026-06-17T19:30:00` represents
+`2026-06-17T15:30:00-04:00` in New York. Set `include_timestamp_unix=true` to
+include the raw Unix-seconds value.
+"""
 function history_candlesticks_by_date(
     ctx::QuoteContext,
     symbol::AbstractString,
@@ -795,6 +838,7 @@ function history_candlesticks_by_date(
     start_date::Union{Date,Nothing} = nothing,
     end_date::Union{Date,Nothing} = nothing,
     trade_sessions::TradeSession.T = TradeSession.Intraday,
+    include_timestamp_unix::Bool = false,
 )
 
     date_request = DateQuery(
@@ -819,20 +863,7 @@ function history_candlesticks_by_date(
     )
     resp = request(ctx, cmd)
 
-    data = map(resp.candlesticks) do c
-        (
-            symbol = resp.symbol,
-            close = c.close,
-            open = c.open,
-            low = c.low,
-            high = c.high,
-            volume = c.volume,
-            turnover = c.turnover,
-            timestamp = unix2datetime(c.timestamp),
-            trade_session = c.trade_session,
-        )
-    end
-    return DataFrame(data)
+    return _candlestick_dataframe(resp; include_timestamp_unix)
 end
 
 function depth(ctx::QuoteContext, symbol::AbstractString)
@@ -1280,6 +1311,13 @@ end
 
 member_id(ctx::QuoteContext) = ctx.inner.member_id
 quote_level(ctx::QuoteContext) = ctx.inner.quote_level
+
+"""Return the account subscription limit, or `nothing` until profile loading completes."""
+subscribe_limit(ctx::QuoteContext) = ctx.inner.subscribe_limit
+
+"""Return the account history-candlestick limit, or `nothing` until profile loading completes."""
+history_candlestick_limit(ctx::QuoteContext) = ctx.inner.history_candlestick_limit
+
 quote_package_details(ctx::QuoteContext) = ctx.inner.quote_package_details
 
 # --- Watchlist API ---

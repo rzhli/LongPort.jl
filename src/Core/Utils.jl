@@ -5,6 +5,7 @@ import DecFP: Dec64
 
 export to_namedtuple,
     to_china_time,
+    utc_iso8601,
     to_dataframe,
     safeparse,
     symbol_to_counter_id,
@@ -20,6 +21,16 @@ export to_namedtuple,
 to_china_time(timestamp::Integer) = unix2datetime(timestamp) + Hour(8)
 to_china_time(timestamp::AbstractString) =
     unix2datetime(parse(Int64, timestamp)) + Hour(8)
+
+"""
+    utc_iso8601(timestamp::DateTime) -> String
+    utc_iso8601(timestamp::Integer) -> String
+
+Format a UTC-semantic `DateTime` or Unix timestamp as an ISO-8601 string with
+an explicit `Z` suffix. Julia's `DateTime` type itself does not store a time zone.
+"""
+utc_iso8601(timestamp::DateTime) = string(timestamp, "Z")
+utc_iso8601(timestamp::Integer) = utc_iso8601(unix2datetime(timestamp))
 
 """
     to_dataframe(data::Vector{T}) where T

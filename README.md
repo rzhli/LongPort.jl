@@ -6,7 +6,14 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.1** — upstream v4.4.1 synchronization, US data-center routing, paper-trading support, and typed US fundamental/quote/trade/asset APIs.
+Latest release: **v0.9.2** — quote-profile limits, explicit UTC/raw candlestick timestamps, optional market-time conversion, and an OAuth data-center routing fix.
+
+### v0.9.2 migration notes
+
+- `subscribe_limit(ctx)` and `history_candlestick_limit(ctx)` expose the account limits reported by `QueryUserQuoteProfile`; they return `nothing` until the profile is loaded.
+- Historical candlestick `timestamp` values remain timezone-naive `DateTime`s with UTC semantics for compatibility. Pass `include_timestamp_unix=true` to retain the exact Unix seconds, use `utc_iso8601` for an explicit `Z`, or install `TimeZones.jl` and call `to_market_time` for a market-local value.
+- The SDK does not fill or synthesize missing candles; the upstream response is preserved as returned.
+- OAuth-backed configurations now resolve the access token correctly when selecting the API data-center region.
 
 ### v0.9.1 migration notes
 
@@ -139,6 +146,19 @@ using Dates
 history_data = history_candlesticks_by_date(
     ctx, "700.HK", CandlePeriod.DAY, AdjustType.NO_ADJUST; start_date=Date(2023, 1, 1), end_date=Date(2023, 2, 1)
 )
+
+# Candlestick timestamps are UTC-semantic DateTime values. To retain the raw
+# Unix seconds alongside the converted column:
+history_data = history_candlesticks_by_date(
+    ctx, "COHR.US", CandlePeriod.ONE_MINUTE, AdjustType.NO_ADJUST;
+    start_date=Date(2026, 6, 17), end_date=Date(2026, 6, 18),
+    include_timestamp_unix=true,
+)
+
+# Optional timezone-aware display (install TimeZones.jl once if needed):
+# using Pkg; Pkg.add("TimeZones")
+# using TimeZones
+# to_market_time(history_data.timestamp[1], "America/New_York")
 
 # Get the list of expiry dates for an option chain
 expiry_dates = option_chain_expiry_date_list(ctx, "AAPL.US")
@@ -389,6 +409,13 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `realtime_quote(ctx, symbol_or_symbols)`: Read latest pushed quote from local cache (subscribe first); aligned with `realtime_depth/brokers/trades`
 - `filings(ctx, symbol)`: Company filings list (REST `/v1/quote/filings`), returns `Vector{FilingItem}`
 - `member_id(ctx)` / `quote_level(ctx)` / `quote_package_details(ctx)`: Now backed by a real `QueryUserQuoteProfile` call on connect (previously returned zero-value stubs)
+- `subscribe_limit(ctx)` / `history_candlestick_limit(ctx)`: Account limits reported by `QueryUserQuoteProfile`; return `nothing` until the profile has loaded
+
+Historical candlestick `timestamp` columns are timezone-naive `DateTime` values
+with UTC semantics. Use `utc_iso8601` to render an explicit `Z` suffix, or load
+TimeZones.jl and call `to_market_time(timestamp, "America/New_York")` for a
+market-local representation. `include_timestamp_unix=true` adds the original
+Unix-seconds value as `timestamp_unix` without changing the default columns.
 
 ### Account Statements (`AssetContext`, new in v0.7.0)
 - `AssetContext(config)`: Create context (HTTP-only, no disconnect needed)

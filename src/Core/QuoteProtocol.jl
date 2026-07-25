@@ -3729,20 +3729,49 @@ end
 struct UserQuoteProfileResponse
     member_id::Int64
     quote_level::String
+    subscribe_limit::Int32
+    history_candlestick_limit::Int32
     quote_package_details::Vector{QuotePackageDetail}
 end
-UserQuoteProfileResponse() = UserQuoteProfileResponse(zero(Int64), "", QuotePackageDetail[])
+UserQuoteProfileResponse() = UserQuoteProfileResponse(
+    zero(Int64),
+    "",
+    zero(Int32),
+    zero(Int32),
+    QuotePackageDetail[],
+)
+# Compatibility constructor for callers using the previously exposed three-field model.
+UserQuoteProfileResponse(
+    member_id::Int64,
+    quote_level::String,
+    quote_package_details::Vector{QuotePackageDetail},
+) = UserQuoteProfileResponse(
+    member_id,
+    quote_level,
+    zero(Int32),
+    zero(Int32),
+    quote_package_details,
+)
 default_values(::Type{UserQuoteProfileResponse}) = (;
     member_id = zero(Int64),
     quote_level = "",
+    subscribe_limit = zero(Int32),
+    history_candlestick_limit = zero(Int32),
     quote_package_details = QuotePackageDetail[],
 )
-field_numbers(::Type{UserQuoteProfileResponse}) =
-    (; member_id = 1, quote_level = 2, quote_package_details = 6)
+field_numbers(::Type{UserQuoteProfileResponse}) = (;
+    member_id = 1,
+    quote_level = 2,
+    subscribe_limit = 3,
+    history_candlestick_limit = 4,
+    quote_package_details = 6,
+)
 
 function decode(d::ProtoBuf.AbstractProtoDecoder, ::Type{<:UserQuoteProfileResponse})
     member_id = zero(Int64)
     quote_level = ""
+    subscribe_limit = zero(Int32)
+    history_candlestick_limit = zero(Int32)
     packages = QuotePackageDetail[]
     while !message_done(d)
         field_number, wire_type = decode_tag(d)
@@ -3750,15 +3779,25 @@ function decode(d::ProtoBuf.AbstractProtoDecoder, ::Type{<:UserQuoteProfileRespo
             member_id = decode(d, Int64)
         elseif field_number == 2
             quote_level = decode(d, String)
+        elseif field_number == 3
+            subscribe_limit = decode(d, Int32)
+        elseif field_number == 4
+            history_candlestick_limit = decode(d, Int32)
         elseif field_number == 6
             len = decode(d, UInt64)
             sub_d = ProtoDecoder(IOBuffer(read(d.io, len)))
             packages = _decode_quote_level_detail(sub_d)
         else
-            skip(d, wire_type)                     # subscribe_limit / history_candlestick_limit / rate_limit
+            skip(d, wire_type)                     # rate_limit and future fields
         end
     end
-    return UserQuoteProfileResponse(member_id, quote_level, packages)
+    return UserQuoteProfileResponse(
+        member_id,
+        quote_level,
+        subscribe_limit,
+        history_candlestick_limit,
+        packages,
+    )
 end
 
 
