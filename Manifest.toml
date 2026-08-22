@@ -222,7 +222,7 @@ version = "1.11.0"
 deps = ["Base64", "CodecZlib", "DataFrames", "Dates", "DecFP", "EnumX", "HTTP", "JSON3", "Logging", "PrecompileTools", "Printf", "ProtoBuf", "Random", "SHA", "StructTypes", "TOML", "URIs"]
 path = "."
 uuid = "d6178d20-a635-452c-a447-f7a195f79261"
-version = "0.9.2"
+version = "0.9.3"
 
     [deps.LongBridge.extensions]
     LongBridgeTimeZonesExt = "TimeZones"

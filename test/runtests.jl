@@ -40,6 +40,9 @@ include("test_v0_9_1_sync.jl")
 # v0.9.2 / quote-profile limits, explicit candlestick timestamp semantics, OAuth routing fix
 include("test_v0_9_2_release.jl")
 
+# v0.9.3 / shared HTTP client and cancellable Context lifecycle
+include("test_v0_9_3_release.jl")
+
 @testset "Config defaults" begin
     direct_cfg = Settings("k", "s", "t", DateTime(2099, 1, 1))
     @test direct_cfg.http_url == LongBridge.Constant.DEFAULT_HTTP_URL_CN

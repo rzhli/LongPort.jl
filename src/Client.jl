@@ -10,11 +10,11 @@ using ..Constant
 using ..ControlProtocol
 using ..Errors
 using ..OAuth: access_token as oauth_access_token
+using ..HttpClient: HTTP_CLIENT
 
-export WSClient, refresh_token, post, put, delete
+export WSClient, refresh_token, post, put, delete, shutdown!
 
 # HTTP (REST) Client Constants
-const DEFAULT_TIMEOUT = (connect = 10, read = 20, write = 20)
 const RETRIES = 3
 
 # WebSocket Client Constants (对齐上游 Rust wsclient)
@@ -24,14 +24,6 @@ const RETRIES = 3
 const WS_CONNECT_TIMEOUT = 5     # 上游 CONNECT_TIMEOUT
 const WS_HEARTBEAT_TIMEOUT = 120 # 上游 HEARTBEAT_TIMEOUT；read idle 窗口，服务端 ping 会刷新
 const WS_WRITE_TIMEOUT = 20      # HTTP.jl 中 write_idle_timeout 仅作用于握手阶段
-const HTTP_TRANSPORT =
-    HTTP.Transport(max_idle_per_host = 20, max_idle_total = 20, max_conns_per_host = 20)
-const HTTP_CLIENT = HTTP.Client(
-    transport = HTTP_TRANSPORT,
-    connect_timeout = DEFAULT_TIMEOUT.connect,
-    read_idle_timeout = DEFAULT_TIMEOUT.read,
-    write_idle_timeout = DEFAULT_TIMEOUT.write,
-)
 # WebSocket Client Constants (参考 Rust 实现)
 const REQUEST_TIMEOUT = 30.0  # seconds
 const QUERY_STRING_SIZE_HINT = 256
@@ -359,9 +351,16 @@ mutable struct WSClient
     heartbeat_task::Union{Nothing,Task}
     reconnect_attempts::Int
     reconnect_task::Union{Nothing,Task}
+    connection_task::Union{Nothing,Task}
+    message_task::Union{Nothing,Task}
+    shutdown::Atomic{Bool}
     config::Config.Settings
 
-    function WSClient(url::String, config::Config.Settings)
+    function WSClient(
+        url::String,
+        config::Config.Settings,
+        shutdown::Atomic{Bool} = Atomic{Bool}(false),
+    )
         new(
             nothing,                # ws
             url,                    # url
@@ -377,9 +376,52 @@ mutable struct WSClient
             nothing,                # heartbeat_task
             0,                      # reconnect_attempts
             nothing,                # reconnect_task
+            nothing,                # connection_task
+            nothing,                # message_task
+            shutdown,
             config,
         )
     end
+end
+
+@inline _is_shutdown(client::WSClient) = client.shutdown[]
+
+function _interrupt_task!(task::Union{Nothing,Task})
+    if isnothing(task) || istaskdone(task) || task === current_task()
+        return
+    end
+    try
+        schedule(task, InterruptException(); error = true)
+    catch e
+        @debug "Failed to interrupt background task" exception=(e, catch_backtrace())
+    end
+end
+
+function _cancel_task_field!(client::WSClient, field::Symbol)
+    task = getfield(client, field)
+    setfield!(client, field, nothing)
+    _interrupt_task!(task)
+    return
+end
+
+function _close_pending_requests!(client::WSClient)
+    lock(client.send_lock) do
+        for ch in values(client.pending)
+            isopen(ch) && close(ch)
+        end
+        empty!(client.pending)
+    end
+    return
+end
+
+function _sleep_or_shutdown(client::WSClient, seconds::Real)
+    deadline = time() + max(Float64(seconds), 0.0)
+    while !_is_shutdown(client)
+        remaining = deadline - time()
+        remaining <= 0 && return true
+        sleep(min(remaining, 0.05))
+    end
+    return false
 end
 
 # ==================== 内部WebSocket函数 ====================
@@ -389,8 +431,9 @@ end
 """
 function connect!(client::WSClient)
     if client.connected
-        return
+        return true
     end
+    _is_shutdown(client) && return false
 
     @info "正在连接到 WS 服务器: $(client.url)"
     region = Config.dc_region(client.config)
@@ -401,8 +444,8 @@ function connect!(client::WSClient)
     client.auth_event = Threads.Event()
     connect_error = Ref{Any}(nothing)
 
-    # 创建WebSocket连接
-    errormonitor(@async begin
+    # 创建WebSocket连接。保存 task 以便 Context 关闭时能打断正在进行的建连。
+    client.connection_task = errormonitor(@async begin
         try
             WebSockets.open(
                 full_url;
@@ -411,6 +454,7 @@ function connect!(client::WSClient)
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
                 write_idle_timeout = WS_WRITE_TIMEOUT,
             ) do ws
+                _is_shutdown(client) && return
                 client.ws = ws
                 client.seq_id = UInt32(1)
 
@@ -420,14 +464,20 @@ function connect!(client::WSClient)
                 start_message_loop(client)
 
                 # 保持连接开放，直到被外部关闭
-                while client.ws === ws && _ws_is_open(ws)
+                while !_is_shutdown(client) && client.ws === ws && _ws_is_open(ws)
                     sleep(0.1)
                 end
             end
         catch e
-            connect_error[] = (e, catch_backtrace())
+            if !(e isa InterruptException && _is_shutdown(client))
+                connect_error[] = (e, catch_backtrace())
+            end
             client.connected = false
             notify(client.auth_event)
+        finally
+            if client.connection_task === current_task()
+                client.connection_task = nothing
+            end
         end
     end)
 
@@ -438,9 +488,16 @@ function connect!(client::WSClient)
     end
     try
         wait(client.auth_event)
+    catch e
+        if e isa InterruptException && _is_shutdown(client)
+            return false
+        end
+        rethrow(e)
     finally
         close(timer)
     end
+
+    _is_shutdown(client) && return false
 
     if !isnothing(connect_error[])
         err, bt = connect_error[]
@@ -451,6 +508,7 @@ function connect!(client::WSClient)
     if !client.connected
         @lperror(408, "WebSocket连接或认证超时")
     end
+    return true
 end
 
 _ws_is_open(ws::Nothing) = false
@@ -461,35 +519,52 @@ disconnect!(client::WSClient)
     
 断开 WebSocket 连接。
 """
-function disconnect!(client::WSClient)
-    if !client.connected && isnothing(client.ws)
-        return
-    end
+function disconnect!(client::WSClient; cancel_reconnect::Bool = true)
+    was_active = client.connected || !isnothing(client.ws)
     client.connected = false
+    ws = client.ws
+    client.ws = nothing
 
-    @info "正在断开 WebSocket 连接..." session_id=client.session_id
+    was_active && @info "正在断开 WebSocket 连接..." session_id=client.session_id
 
-    if !isnothing(client.heartbeat_task) && !istaskdone(client.heartbeat_task)
-        schedule(client.heartbeat_task, InterruptException(); error = true)
-        client.heartbeat_task = nothing
-    end
+    # Wake connect! and all in-flight requests before cancelling their tasks.
+    notify(client.auth_event)
+    _close_pending_requests!(client)
 
-    if !isnothing(client.reconnect_task) && !istaskdone(client.reconnect_task)
-        schedule(client.reconnect_task, InterruptException(); error = true)
-        client.reconnect_task = nothing
-    end
+    _cancel_task_field!(client, :heartbeat_task)
 
-    if _ws_is_open(client.ws)
-        try
-            WebSockets.close(client.ws)
-        catch
-            # Ignore errors during close, as the connection might already be dead
+    cancel_reconnect && _cancel_task_field!(client, :reconnect_task)
+
+    _cancel_task_field!(client, :message_task)
+    _cancel_task_field!(client, :connection_task)
+
+    if _ws_is_open(ws)
+        if _is_shutdown(client)
+            # HTTP.jl's graceful WebSocket close may wait up to five seconds for
+            # the peer. Shutdown must remain non-blocking, so let that bounded
+            # cleanup finish independently after the transport tasks are stopped.
+            @async try
+                WebSockets.close(ws)
+            catch
+            end
+        else
+            try
+                WebSockets.close(ws)
+            catch
+                # Ignore errors during close, as the connection might already be dead
+            end
         end
     end
 
-    client.ws = nothing
+    was_active && @info "WebSocket 连接已关闭" session_id=client.session_id
+    return
+end
 
-    @info "WebSocket 连接已关闭" session_id=client.session_id
+"""Permanently stop a WebSocket client and any reconnect work it owns."""
+function shutdown!(client::WSClient)
+    atomic_xchg!(client.shutdown, true)
+    disconnect!(client; cancel_reconnect = true)
+    return
 end
 
 """
@@ -499,11 +574,14 @@ send_request_packet(client::WSClient, cmd::UInt8, body::Vector{UInt8})
 根据Longport协议格式: [header(1)] + [cmd_code(1)] + [request_id(4)] + [timeout(2)] + [body_len(3)] + [body]
 """
 function send_request_packet(client::WSClient, cmd::UInt8, body::Vector{UInt8})
+    _is_shutdown(client) && throw(LongBridgeError(500, "WebSocket客户端已关闭"))
     if !_ws_is_open(client.ws)
         throw(ArgumentError("WebSocket物理连接不存在"))
     end
 
     lock(client.send_lock) do
+        _is_shutdown(client) && throw(LongBridgeError(500, "WebSocket客户端已关闭"))
+        _ws_is_open(client.ws) || throw(ArgumentError("WebSocket物理连接不存在"))
         request_id = client.seq_id
         client.seq_id += UInt32(1)
         _write_request_frame(client, cmd, body, request_id)
@@ -558,14 +636,15 @@ start_message_loop(client::WSClient)
 """
 function start_message_loop(client::WSClient)
     ws = client.ws
-    isnothing(ws) && return
+    (isnothing(ws) || _is_shutdown(client)) && return
 
-    errormonitor(@async begin
+    client.message_task = errormonitor(@async begin
         try
             @info "启动消息处理循环"
             # 使用HTTP.jl推荐的WebSocket消息循环模式
             try
                 for msg in ws
+                    _is_shutdown(client) && break
                     @debug "接收到WebSocket消息" msg=msg typeof=typeof(msg)
                     data = if msg isa String
                         Vector{UInt8}(codeunits(msg))
@@ -700,7 +779,7 @@ function start_message_loop(client::WSClient)
                     end
                 end
             catch e
-                if e isa InterruptException
+                if e isa InterruptException || _is_shutdown(client)
                     @info "消息循环被中断"
                 elseif client.ws === ws
                     # 连接非正常终止（EOF / 1006 read idle / 协议错误等）。
@@ -711,13 +790,18 @@ function start_message_loop(client::WSClient)
                     else
                         @error "消息循环异常，尝试重连" exception=(e, catch_backtrace())
                     end
-                    reconnect!(client)
+                    _is_shutdown(client) || reconnect!(client)
                 end
             end
         catch e
-            @error "消息循环外层异常" exception=(e, catch_backtrace())
+            if !(e isa InterruptException || _is_shutdown(client))
+                @error "消息循环外层异常" exception=(e, catch_backtrace())
+            end
         finally
             @info "消息处理循环已停止" session_id=client.session_id
+            if client.message_task === current_task()
+                client.message_task = nothing
+            end
         end
     end)
 end
@@ -728,24 +812,24 @@ reconnect!(client::WSClient)
 Handles the reconnection logic for the WebSocket client.
 """
 function reconnect!(client::WSClient)
+    _is_shutdown(client) && return false
     if isnothing(client.session_id)
         @warn "没有 session_id，无法执行快速重连，将执行标准重连"
-        return full_reconnect!(client)
+        full_reconnect!(client)
+        return false
     end
 
     @info "尝试使用 session_id 进行快速重连..."
 
-    if !isnothing(client.heartbeat_task) && !istaskdone(client.heartbeat_task)
-        schedule(client.heartbeat_task, InterruptException(); error = true)
-        client.heartbeat_task = nothing
-    end
+    _cancel_task_field!(client, :heartbeat_task)
+    client.connected = false
 
     old_ws = client.ws
     reconnect_event = Threads.Event()
     reconnect_error = Ref{Any}(nothing)
     reconnect_ok = Ref(false)
 
-    errormonitor(@async begin
+    client.connection_task = errormonitor(@async begin
         try
             region = Config.dc_region(client.config)
             full_url = _websocket_url(_regional_ws_url(client.url, region))
@@ -758,6 +842,7 @@ function reconnect!(client::WSClient)
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
                 write_idle_timeout = WS_WRITE_TIMEOUT,
             ) do ws
+                _is_shutdown(client) && return
                 client.ws = ws
                 client.seq_id = UInt32(1)
                 client.connected = true
@@ -799,7 +884,7 @@ function reconnect!(client::WSClient)
 
                 # 对齐上游：不重启客户端心跳，由服务端 ping 保活。
                 # 上游在 reconnect 后无条件重新订阅，这里同样恢复订阅。
-                if !isnothing(client.on_reconnect)
+                if !_is_shutdown(client) && !isnothing(client.on_reconnect)
                     try
                         Base.invokelatest(client.on_reconnect)
                     catch e
@@ -808,14 +893,20 @@ function reconnect!(client::WSClient)
                 end
 
                 # Keep HTTP.WebSockets.open's do-block alive for the new socket.
-                while client.ws === ws && _ws_is_open(ws)
+                while !_is_shutdown(client) && client.ws === ws && _ws_is_open(ws)
                     sleep(0.1)
                 end
             end
         catch e
-            reconnect_error[] = (e, catch_backtrace())
+            if !(e isa InterruptException && _is_shutdown(client))
+                reconnect_error[] = (e, catch_backtrace())
+            end
             client.connected = false
             notify(reconnect_event)
+        finally
+            if client.connection_task === current_task()
+                client.connection_task = nothing
+            end
         end
     end)
 
@@ -824,11 +915,18 @@ function reconnect!(client::WSClient)
     end
     try
         wait(reconnect_event)
+    catch e
+        if e isa InterruptException && _is_shutdown(client)
+            return false
+        end
+        rethrow(e)
     finally
         close(timer)
     end
 
-    if reconnect_ok[]
+    _is_shutdown(client) && return false
+
+    if reconnect_ok[] && client.connected
         return true
     end
 
@@ -838,50 +936,69 @@ function reconnect!(client::WSClient)
     else
         @error "快速重连超时"
     end
+    _cancel_task_field!(client, :connection_task)
     full_reconnect!(client)
     return false
 end
 
 function full_reconnect!(client::WSClient)
+    _is_shutdown(client) && return nothing
     if !isnothing(client.reconnect_task) && !istaskdone(client.reconnect_task)
         @warn "重连任务已在进行中"
-        return
+        return client.reconnect_task
     end
 
     client.reconnect_task = errormonitor(@async begin
-        disconnect!(client)
+        try
+            # Do not cancel this reconnect task from inside itself.
+            disconnect!(client; cancel_reconnect = false)
 
-        max_attempts = 5
-        for attempt = 1:max_attempts
-            client.reconnect_attempts = attempt
-            @info "尝试完全重连 (第 $attempt/$max_attempts 次)..."
-            try
-                connect!(client)
-                if client.connected
-                    @info "完全重连成功"
-                    client.reconnect_attempts = 0
-                    if !isnothing(client.on_reconnect)
-                        try
-                            Base.invokelatest(client.on_reconnect)
-                        catch e
-                            @error "重连后恢复订阅失败" exception=(e, catch_backtrace())
+            max_attempts = 5
+            for attempt = 1:max_attempts
+                _is_shutdown(client) && return
+                client.reconnect_attempts = attempt
+                @info "尝试完全重连 (第 $attempt/$max_attempts 次)..."
+                try
+                    connected = connect!(client)
+                    if connected && client.connected && !_is_shutdown(client)
+                        @info "完全重连成功"
+                        if !isnothing(client.on_reconnect)
+                            try
+                                Base.invokelatest(client.on_reconnect)
+                            catch e
+                                @error "重连后恢复订阅失败" exception=(e, catch_backtrace())
+                            end
                         end
+                        return
                     end
-                    return
+                catch e
+                    if e isa InterruptException && _is_shutdown(client)
+                        return
+                    end
+                    @warn "完全重连失败" exception=(e, catch_backtrace())
                 end
-            catch e
-                @warn "完全重连失败" exception=(e, catch_backtrace())
+
+                if attempt < max_attempts
+                    sleep_duration = 2.0^attempt
+                    @info "等待 $sleep_duration 秒后重试"
+                    _sleep_or_shutdown(client, sleep_duration) || return
+                end
             end
 
-            # Exponential backoff
-            sleep_duration = 2.0^attempt
-            @info "等待 $sleep_duration 秒后重试"
-            sleep(sleep_duration)
+            _is_shutdown(client) ||
+                @error "完全重连 $max_attempts 次后仍然失败，放弃重连"
+        catch e
+            if !(e isa InterruptException && _is_shutdown(client))
+                @error "完全重连任务异常" exception=(e, catch_backtrace())
+            end
+        finally
+            client.reconnect_attempts = 0
+            if client.reconnect_task === current_task()
+                client.reconnect_task = nothing
+            end
         end
-
-        @error "完全重连 $max_attempts 次后仍然失败，放弃重连"
-        client.reconnect_attempts = 0
     end)
+    return client.reconnect_task
 end
 
 # ==================== WebSocket Authentication ====================
@@ -913,6 +1030,7 @@ function ws_request(
     timeout::Float64 = REQUEST_TIMEOUT,
 )::Vector{UInt8}
 
+    _is_shutdown(client) && throw(LongBridgeError(500, "WebSocket客户端已关闭"))
     if !client.connected
         throw(ArgumentError("WebSocket客户端未连接"))
     end
@@ -924,10 +1042,18 @@ function ws_request(
     # 这避免了响应在 send 完成与 register 之间到达造成的丢失。
     ch = Channel{Tuple{UInt8,Vector{UInt8}}}(1)
     request_id = lock(client.send_lock) do
+        _is_shutdown(client) && throw(LongBridgeError(500, "WebSocket客户端已关闭"))
+        client.connected || throw(ArgumentError("WebSocket客户端未连接"))
+        _ws_is_open(client.ws) || throw(ArgumentError("WebSocket物理连接不存在"))
         rid = client.seq_id
         client.seq_id += UInt32(1)
         client.pending[rid] = ch
-        _write_request_frame(client, command_code, request_body, rid)
+        try
+            _write_request_frame(client, command_code, request_body, rid)
+        catch
+            delete!(client.pending, rid)
+            rethrow()
+        end
         return rid
     end
 
@@ -944,6 +1070,9 @@ function ws_request(
             status_code, response_body = take!(ch)
         catch e
             if e isa InvalidStateException
+                if _is_shutdown(client)
+                    throw(LongBridgeError(500, "WebSocket客户端已关闭"))
+                end
                 throw(LongBridgeError(408, "请求超时"))
             end
             rethrow(e)

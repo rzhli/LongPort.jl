@@ -6,7 +6,12 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.2** —— 新增账户行情限制、明确的 UTC/原始 K 线时间戳、可选市场时区转换，并修复 OAuth 数据中心路由。
+最新版本：**v0.9.3** —— 生命周期安全的 WebSocket 关闭、幂等的 `disconnect!`/`close`、Context 自动清理，以及共享的进程内 HTTP 客户端。
+
+### v0.9.3 迁移说明
+
+- `disconnect!(ctx)` 和 `close(ctx)` 现在幂等并执行确定性清理：返回前会关闭 command/push 通道、唤醒挂起的请求并停止重连工作。仍建议显式调用 `close(ctx)` 来释放连接；Context 被回收时会进行尽力而为的自动清理。
+- REST、OAuth 和遗留 token 刷新请求现在共享一个进程内 `HTTP.Client`，因此连接池与传输状态会被复用。OAuth token 交换仍保留原有 60 秒请求 / 10 秒响应头 / 30 秒读空闲超时。
 
 ### v0.9.2 迁移说明
 
@@ -178,6 +183,9 @@ history_temp = history_market_temperature(ctx, Market.US, Date(2025, 7, 1), Date
 disconnect!(ctx)
 ```
 
+也可以使用 `close(ctx)`。Context 被回收时会尝试自动停止后台任务，
+但需要确定性释放连接时仍建议显式调用 `close` 或 `disconnect!`。
+
 ### 交易
 
 ```julia
@@ -261,7 +269,7 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `OAuthBuilder(client_id) |> build(open_url_fn)`: 构建 OAuth 句柄，通过浏览器进行授权
 - `QuoteContext(config)`: 创建并连接 `QuoteContext`
 - `TradeContext(config)`: 创建并连接 `TradeContext`
-- `disconnect!(ctx)`: 断开与服务器的连接
+- `disconnect!(ctx)` / `close(ctx)`: 断开连接并停止 Context 的后台任务
 
 ### 行情拉取
 - `static_info(ctx, symbols)`: 获取标的基础信息

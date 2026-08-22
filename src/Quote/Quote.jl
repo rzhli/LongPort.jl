@@ -2,6 +2,7 @@ module Quote
 
 using ProtoBuf, JSON3, Dates, DataFrames, HTTP, EnumX, StructTypes
 using Dates: datetime2unix
+using Base.Threads: Atomic, atomic_xchg!
 using ..Config, ..QuotePush, ..Client, ..QuoteProtocol, ..ControlProtocol, ..Constant
 using ..Commands:
     AbstractCommand, HttpGetCmd, HttpPostCmd, HttpPutCmd, HttpDeleteCmd, DisconnectCmd
@@ -168,6 +169,8 @@ mutable struct InnerQuoteContext
     ws_client::Union{WSClient,Nothing}
     session_id::Union{String,Nothing}
     command_ch::Channel{AbstractCommand}
+    push_ch::Channel{Tuple{UInt8,Vector{UInt8}}}
+    shutdown::Atomic{Bool}
     background_task::Union{Task,Nothing}
     push_dispatcher_task::Union{Task,Nothing}
     callbacks::QuotePush.Callbacks
@@ -190,15 +193,54 @@ end
 @doc """
 Quote context handle. It owns shared mutable state used by the background tasks.
 """
-struct QuoteContext
+mutable struct QuoteContext
     inner::InnerQuoteContext
 end
 
 const REQUEST_WAIT_TIMEOUT = Client.REQUEST_TIMEOUT + 5.0
 const PUSH_CHANNEL_CAPACITY = 1024
+const SHUTDOWN_WAIT_TIMEOUT = 5.0
 # Max consecutive connection-setup failures (e.g. get_otp TLS timeout) before
 # the background task gives up. Below this it retries with exponential backoff.
 const MAX_CONNECT_ATTEMPTS = 5
+
+@inline _is_shutdown(inner::InnerQuoteContext) = inner.shutdown[]
+
+function _sleep_or_shutdown(inner::InnerQuoteContext, seconds::Real)
+    deadline = time() + max(Float64(seconds), 0.0)
+    while !_is_shutdown(inner)
+        remaining = deadline - time()
+        remaining <= 0 && return true
+        sleep(min(remaining, 0.05))
+    end
+    return false
+end
+
+function _request_shutdown!(inner::InnerQuoteContext)
+    atomic_xchg!(inner.shutdown, true)
+    isopen(inner.command_ch) && close(inner.command_ch)
+    isopen(inner.push_ch) && close(inner.push_ch)
+    if !isnothing(inner.ws_client)
+        Client.shutdown!(inner.ws_client)
+    end
+    return
+end
+
+function _wait_for_task(task::Union{Task,Nothing}, name::AbstractString)
+    (isnothing(task) || istaskdone(task)) && return
+    status = timedwait(() -> istaskdone(task), SHUTDOWN_WAIT_TIMEOUT; pollint = 0.01)
+    status === :timed_out && @warn "$name did not stop within $SHUTDOWN_WAIT_TIMEOUT seconds"
+    return
+end
+
+function _finalize_quote_context!(ctx::QuoteContext)
+    try
+        _request_shutdown!(ctx.inner)
+    catch
+        # Finalizers must never surface exceptions during GC or process exit.
+    end
+    return
+end
 
 function _is_reconnectable_ws_error(e)
     msg = sprint(showerror, e)
@@ -208,24 +250,27 @@ function _is_reconnectable_ws_error(e)
 end
 
 function _wait_for_quote_reconnect!(inner::InnerQuoteContext; timeout::Real = REQUEST_WAIT_TIMEOUT)
+    _is_shutdown(inner) && return false
     ws = inner.ws_client
     isnothing(ws) && return false
 
     Client.full_reconnect!(ws)
     deadline = time() + timeout
-    while time() < deadline
+    while !_is_shutdown(inner) && time() < deadline
         if !isnothing(inner.ws_client) && inner.ws_client.connected
             return true
         end
         sleep(0.05)
     end
-    return !isnothing(inner.ws_client) && inner.ws_client.connected
+    return !_is_shutdown(inner) &&
+           !isnothing(inner.ws_client) &&
+           inner.ws_client.connected
 end
 
 function _submit_command!(ctx::QuoteContext, cmd::AbstractCommand)
     inner = ctx.inner
     task = inner.background_task
-    if isnothing(task) || istaskdone(task) || !isopen(inner.command_ch)
+    if _is_shutdown(inner) || isnothing(task) || istaskdone(task) || !isopen(inner.command_ch)
         throw(LongBridgeError(500, "Quote background task is not running"))
     end
 
@@ -262,10 +307,11 @@ function _take_task_response!(ch::Channel, context_name::AbstractString)
 end
 
 function _resubscribe_quote!(inner::InnerQuoteContext)
-    isempty(inner.subscriptions) && return
+    (_is_shutdown(inner) || isempty(inner.subscriptions)) && return
 
     @info "Resubscribing to topics..."
     for (symbols, sub_types) in inner.subscriptions
+        _is_shutdown(inner) && return
         try
             req = QuoteSubscribeRequest(symbols, sub_types, true)
             cmd = GenericRequestCmd(
@@ -276,35 +322,35 @@ function _resubscribe_quote!(inner::InnerQuoteContext)
             )
             handle_command(inner, cmd)
         catch e
-            @error "Failed to resubscribe" symbols=symbols sub_types=sub_types exception=(
-                e,
-                catch_backtrace(),
-            )
+            _is_shutdown(inner) ||
+                @error "Failed to resubscribe" symbols=symbols sub_types=sub_types exception=(
+                    e,
+                    catch_backtrace(),
+                )
         end
     end
 end
 
 # --- Background Task Logic ---
 
-function run_quote_loop(
-    inner::InnerQuoteContext,
-    push_tx::Channel{Tuple{UInt8,Vector{UInt8}}},
-)
+function run_quote_loop(inner::InnerQuoteContext)
     # @info "Quote background task started."
     should_run = true
     reconnect_attempts = 0
+    push_tx = inner.push_ch
 
-    while should_run
+    while should_run && !_is_shutdown(inner)
         try
             # 1. Establish Connection or Reconnect
             if isnothing(inner.ws_client)
                 # First time connection or after a full disconnect
-                ws = WSClient(inner.config.quote_ws_url, inner.config)
+                ws = WSClient(inner.config.quote_ws_url, inner.config, inner.shutdown)
                 inner.ws_client = ws
                 ws.on_push = (cmd, body) -> put!(push_tx, (cmd, body))
                 ws.on_reconnect = () -> _resubscribe_quote!(inner)
                 ws.auth_data = Client.create_auth_request(inner.config)
-                Client.connect!(ws)
+                connected = Client.connect!(ws)
+                (_is_shutdown(inner) || !connected) && break
                 inner.session_id = ws.session_id # Save session_id
                 # @info "Quote WebSocket connected."
                 reconnect_attempts = 0 # Reset on successful connection
@@ -339,11 +385,14 @@ function run_quote_loop(
                     inner.quote_package_details = profile.quote_package_details
                 end
             catch e
-                @warn "Failed to fetch user quote profile" exception=(e, catch_backtrace())
+                _is_shutdown(inner) ||
+                    @warn "Failed to fetch user quote profile" exception=(e, catch_backtrace())
             end
 
             # 2. Main Command Processing Loop
-            for cmd in inner.command_ch
+            while !_is_shutdown(inner)
+                cmd = take!(inner.command_ch)
+                _is_shutdown(inner) && break
                 reconnect_needed = handle_command(inner, cmd)
                 if cmd isa DisconnectCmd
                     should_run = false
@@ -358,7 +407,9 @@ function run_quote_loop(
                 end
             end
         catch e
-            if e isa InvalidStateException && e.state == :closed
+            if _is_shutdown(inner) || e isa InterruptException
+                should_run = false
+            elseif e isa InvalidStateException && e.state == :closed
                 # @warn "Command channel closed, shutting down quote task."
                 should_run = false
             elseif e isa LongBridgeError && occursin("WebSocket", e.message)
@@ -368,7 +419,7 @@ function run_quote_loop(
                 )
 
                 # Attempt fast reconnect first
-                Client.full_reconnect!(inner.ws_client)
+                isnothing(inner.ws_client) || Client.full_reconnect!(inner.ws_client)
 
             else
                 # Connection setup / network failure (e.g. get_otp TLS timeout,
@@ -395,19 +446,23 @@ function run_quote_loop(
                         e,
                         catch_backtrace(),
                     )
-                    sleep(backoff)
+                    _sleep_or_shutdown(inner, backoff) || (should_run = false)
                 end
             end
         finally
             # 3. Cleanup on graceful shutdown
-            if !should_run && !isnothing(inner.ws_client)
-                Client.disconnect!(inner.ws_client)
+            if (!should_run || _is_shutdown(inner)) && !isnothing(inner.ws_client)
+                if _is_shutdown(inner)
+                    Client.shutdown!(inner.ws_client)
+                else
+                    Client.disconnect!(inner.ws_client)
+                end
                 inner.ws_client = nothing
             end
         end
     end
 
-    close(push_tx)
+    isopen(push_tx) && close(push_tx)
     isopen(inner.command_ch) && close(inner.command_ch)
     # @info "Quote background task stopped."
 end
@@ -504,16 +559,17 @@ end
 # --- Push Dispatcher ---
 
 function dispatch_push_events(
-    ctx::QuoteContext,
+    inner::InnerQuoteContext,
     push_rx::Channel{Tuple{UInt8,Vector{UInt8}}},
 )
     # @info "Push event dispatcher started."
-    store = ctx.inner.store
+    store = inner.store
     for (cmd_code, body) in push_rx
+        _is_shutdown(inner) && break
         command = QuoteCommand.T(cmd_code)
         io = IOBuffer(body)
         decoder = ProtoBuf.ProtoDecoder(io)
-        callbacks = ctx.inner.callbacks
+        callbacks = inner.callbacks
 
         try
             if command == QuoteCommand.PushQuoteData
@@ -556,15 +612,18 @@ connection and the background tasks.
 # Arguments
 - `config::Config.Settings`: The configuration object.
 """
-function QuoteContext(config::Config.Settings)
+function _build_quote_context(config::Config.Settings; start_tasks::Bool = true)
     command_ch = Channel{AbstractCommand}(32)
     push_ch = Channel{Tuple{UInt8,Vector{UInt8}}}(PUSH_CHANNEL_CAPACITY)
+    shutdown = Atomic{Bool}(false)
 
     inner = InnerQuoteContext(
         config,
         nothing, # ws_client
         nothing, # session_id
         command_ch,
+        push_ch,
+        shutdown,
         nothing, # background_task
         nothing, # push_dispatcher_task
         QuotePush.Callbacks(),
@@ -582,13 +641,20 @@ function QuoteContext(config::Config.Settings)
     )
 
     ctx = QuoteContext(inner)
+    finalizer(_finalize_quote_context!, ctx)
 
-    # Start background tasks
-    inner.background_task = errormonitor(@async run_quote_loop(inner, push_ch))
-    inner.push_dispatcher_task = errormonitor(@async dispatch_push_events(ctx, push_ch))
+    if start_tasks
+        # Tasks retain only `inner`, so dropping the outer Context can run its
+        # finalizer and signal both loops to stop.
+        inner.background_task = errormonitor(@async run_quote_loop(inner))
+        inner.push_dispatcher_task =
+            errormonitor(@async dispatch_push_events(inner, push_ch))
+    end
 
     return ctx
 end
+
+QuoteContext(config::Config.Settings) = _build_quote_context(config)
 
 @doc """
 Disconnects the WebSocket and shuts down the background tasks.
@@ -1524,17 +1590,13 @@ end
 
 function disconnect!(ctx::QuoteContext)
     inner = ctx.inner
-    if !isnothing(inner.background_task) && !istaskdone(inner.background_task)
-        put!(inner.command_ch, DisconnectCmd())
-        close(inner.command_ch)
-
-        wait(inner.background_task)
-
-        if !isnothing(inner.push_dispatcher_task) && !istaskdone(inner.push_dispatcher_task)
-            wait(inner.push_dispatcher_task)
-        end
-    end
+    _request_shutdown!(inner)
+    _wait_for_task(inner.background_task, "Quote background task")
+    _wait_for_task(inner.push_dispatcher_task, "Quote push dispatcher")
+    return
 end
+
+Base.close(ctx::QuoteContext) = disconnect!(ctx)
 
 # ════════════════════════════════════════════════════════════════════════
 # v4.1.0 新增 HTTP-only 方法（直接走 Client.http_get/post，不经后台任务）

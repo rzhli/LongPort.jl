@@ -5,6 +5,7 @@ using HTTP, JSON3, Dates
 using ..Constant
 using ..Errors: LongBridgeError
 using ..OAuth: OAuthHandle, access_token as oauth_access_token
+using ..HttpClient: HTTP_CLIENT
 
 export Settings,
     config,
@@ -146,6 +147,7 @@ function from_toml(path::AbstractString)
         try
             resp = HTTP.get(
                 url;
+                client = HTTP_CLIENT,
                 headers = headers,
                 query = query_param,
                 connect_timeout = 10,

@@ -1,5 +1,19 @@
 # Release Notes
 
+## v0.9.3 (2026-08-15)
+
+### Reliability and resource lifecycle
+
+- `QuoteContext` and `TradeContext` now share an explicit shutdown signal with their WebSocket clients. `disconnect!` and `close` are idempotent, close command/push channels, wake pending requests, stop reconnect work, and no longer wait indefinitely for a connection attempt before returning.
+- Dropping a Context now triggers best-effort automatic cleanup. Quote push dispatch no longer retains the outer `QuoteContext`, allowing its finalizer to signal the background tasks to stop; explicit `close(ctx)` remains recommended for deterministic cleanup.
+- WebSocket connection and message-loop tasks are tracked, reconnect backoff observes shutdown, and `WSClient.disconnect!` no longer returns before cancelling an active reconnect task when the socket is already absent.
+- Full reconnect no longer interrupts its own task while closing the previous socket, and pending WebSocket requests are released when their client shuts down.
+
+### HTTP client
+
+- REST, OAuth, and legacy token-refresh requests now use one process-wide `HTTP.Client`, sharing its connection pool and transport state. OAuth token exchanges retain their previous 60-second request, 10-second response-header, and 30-second read-idle timeouts.
+- The shared client disables cookie storage because OpenAPI authentication is applied explicitly per request.
+
 ## v0.9.2 (2026-07-25)
 
 - Decodes and exposes the `subscribe_limit` and `history_candlestick_limit` values from `QueryUserQuoteProfile` via `QuoteContext` accessors.

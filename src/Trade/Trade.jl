@@ -2,6 +2,7 @@ module Trade
 
 using JSON3, Dates, DataFrames, StructTypes
 import ProtoBuf as PB
+using Base.Threads: Atomic, atomic_xchg!
 
 using ..Constant
 using ..Config
@@ -55,16 +56,56 @@ mutable struct InnerTradeContext
     config::Config.Settings
     ws_client::Union{Client.WSClient,Nothing}
     command_ch::Channel{AbstractCommand}
+    shutdown::Atomic{Bool}
     background_task::Union{Task,Nothing}
     callbacks::Callbacks
     subscriptions::Set{String}
 end
 
-struct TradeContext
+mutable struct TradeContext
     inner::InnerTradeContext
 end
 
 const REQUEST_WAIT_TIMEOUT = Client.REQUEST_TIMEOUT + 5.0
+const SHUTDOWN_WAIT_TIMEOUT = 5.0
+const MAX_RECONNECT_BACKOFF = 30.0
+
+@inline _is_shutdown(inner::InnerTradeContext) = inner.shutdown[]
+
+function _sleep_or_shutdown(inner::InnerTradeContext, seconds::Real)
+    deadline = time() + max(Float64(seconds), 0.0)
+    while !_is_shutdown(inner)
+        remaining = deadline - time()
+        remaining <= 0 && return true
+        sleep(min(remaining, 0.05))
+    end
+    return false
+end
+
+function _request_shutdown!(inner::InnerTradeContext)
+    atomic_xchg!(inner.shutdown, true)
+    isopen(inner.command_ch) && close(inner.command_ch)
+    if !isnothing(inner.ws_client)
+        Client.shutdown!(inner.ws_client)
+    end
+    return
+end
+
+function _wait_for_task(task::Union{Task,Nothing}, name::AbstractString)
+    (isnothing(task) || istaskdone(task)) && return
+    status = timedwait(() -> istaskdone(task), SHUTDOWN_WAIT_TIMEOUT; pollint = 0.01)
+    status === :timed_out && @warn "$name did not stop within $SHUTDOWN_WAIT_TIMEOUT seconds"
+    return
+end
+
+function _finalize_trade_context!(ctx::TradeContext)
+    try
+        _request_shutdown!(ctx.inner)
+    catch
+        # Finalizers must never surface exceptions during GC or process exit.
+    end
+    return
+end
 
 function _is_reconnectable_ws_error(e)
     msg = sprint(showerror, e)
@@ -76,7 +117,7 @@ end
 function _submit_command!(ctx::TradeContext, cmd::AbstractCommand)
     inner = ctx.inner
     task = inner.background_task
-    if isnothing(task) || istaskdone(task) || !isopen(inner.command_ch)
+    if _is_shutdown(inner) || isnothing(task) || istaskdone(task) || !isopen(inner.command_ch)
         throw(LongBridgeError(500, "Trade background task is not running"))
     end
 
@@ -113,7 +154,7 @@ function _take_task_response!(ch::Channel, context_name::AbstractString)
 end
 
 function _resubscribe_trade!(inner::InnerTradeContext)
-    isempty(inner.subscriptions) && return
+    (_is_shutdown(inner) || isempty(inner.subscriptions)) && return
 
     @info "Resubscribing to trade topics..."
     try
@@ -127,7 +168,8 @@ function _resubscribe_trade!(inner::InnerTradeContext)
             take!(io_buf),
         )
     catch e
-        @error "Failed to resubscribe to trade topics" exception=(e, catch_backtrace())
+        _is_shutdown(inner) ||
+            @error "Failed to resubscribe to trade topics" exception=(e, catch_backtrace())
     end
 end
 
@@ -135,9 +177,9 @@ function run_trade_loop(inner::InnerTradeContext)
     should_run = true
     reconnect_attempts = 0
 
-    while should_run
+    while should_run && !_is_shutdown(inner)
         try
-            ws = Client.WSClient(inner.config.trade_ws_url, inner.config)
+            ws = Client.WSClient(inner.config.trade_ws_url, inner.config, inner.shutdown)
             inner.ws_client = ws
             ws.on_push =
                 (cmd, body) -> begin
@@ -151,14 +193,16 @@ function run_trade_loop(inner::InnerTradeContext)
                 end
             ws.on_reconnect = () -> _resubscribe_trade!(inner)
             ws.auth_data = Client.create_auth_request(inner.config)
-            Client.connect!(ws)
+            connected = Client.connect!(ws)
+            (_is_shutdown(inner) || !connected) && break
             reconnect_attempts = 0
 
             # Resubscribe to all topics after successful reconnection
             _resubscribe_trade!(inner)
 
-            while isopen(inner.command_ch)
+            while !_is_shutdown(inner)
                 cmd = take!(inner.command_ch)
+                _is_shutdown(inner) && break
                 reconnect_needed = handle_command(inner, cmd)
                 if cmd isa DisconnectCmd
                     should_run = false
@@ -173,17 +217,33 @@ function run_trade_loop(inner::InnerTradeContext)
                 end
             end
         catch e
-            if e isa InvalidStateException && e.state == :closed
+            if _is_shutdown(inner) || e isa InterruptException
                 should_run = false
-            elseif e isa LongBridgeError && occursin("WebSocket", e.message)
-                Client.full_reconnect!(inner.ws_client)
+            elseif e isa InvalidStateException && e.state == :closed
+                should_run = false
+            elseif _is_reconnectable_ws_error(e)
+                reconnect_attempts += 1
+                backoff = min(2.0^min(reconnect_attempts, 5), MAX_RECONNECT_BACKOFF)
+                if !isnothing(inner.ws_client)
+                    Client.disconnect!(inner.ws_client)
+                    inner.ws_client = nothing
+                end
+                @warn "Trade connection failed; retrying in $backoff seconds" exception=(
+                    e,
+                    catch_backtrace(),
+                )
+                _sleep_or_shutdown(inner, backoff) || (should_run = false)
             else
                 @error "Trade background task failed" exception = (e, catch_backtrace())
                 should_run = false
             end
         finally
             if !isnothing(inner.ws_client)
-                Client.disconnect!(inner.ws_client)
+                if _is_shutdown(inner)
+                    Client.shutdown!(inner.ws_client)
+                else
+                    Client.disconnect!(inner.ws_client)
+                end
                 inner.ws_client = nothing
             end
         end
@@ -244,17 +304,30 @@ function handle_command(inner::InnerTradeContext, cmd::AbstractCommand)
     return reconnect_needed
 end
 
-function TradeContext(config::Config.Settings)
+function _build_trade_context(config::Config.Settings; start_tasks::Bool = true)
     command_ch = Channel{AbstractCommand}(32)
+    shutdown = Atomic{Bool}(false)
 
-    inner =
-        InnerTradeContext(config, nothing, command_ch, nothing, Callbacks(), Set{String}())
+    inner = InnerTradeContext(
+        config,
+        nothing,
+        command_ch,
+        shutdown,
+        nothing,
+        Callbacks(),
+        Set{String}(),
+    )
     ctx = TradeContext(inner)
+    finalizer(_finalize_trade_context!, ctx)
 
-    inner.background_task = errormonitor(@async run_trade_loop(inner))
+    if start_tasks
+        inner.background_task = errormonitor(@async run_trade_loop(inner))
+    end
 
     return ctx
 end
+
+TradeContext(config::Config.Settings) = _build_trade_context(config)
 
 
 # Type-stable specializations: each command produces a known concrete
@@ -728,10 +801,10 @@ us_realized_pl(
 
 function disconnect!(ctx::TradeContext)
     inner = ctx.inner
-    if !isnothing(inner.background_task) && !istaskdone(inner.background_task)
-        put!(inner.command_ch, DisconnectCmd())
-        close(inner.command_ch)
-        wait(inner.background_task)
-    end
+    _request_shutdown!(inner)
+    _wait_for_task(inner.background_task, "Trade background task")
+    return
 end
+
+Base.close(ctx::TradeContext) = disconnect!(ctx)
 end # module Trade

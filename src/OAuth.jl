@@ -4,6 +4,7 @@ using HTTP, JSON3, Random, StructTypes
 using Base.Threads: ReentrantLock
 
 using ..Errors: LongBridgeError
+using ..HttpClient: HTTP_CLIENT, OAUTH_TIMEOUT
 
 export OAuthToken,
     OAuthHandle,
@@ -24,12 +25,6 @@ const OAUTH_TOKEN_PATH = "/oauth2/token"
 const DEFAULT_CALLBACK_PORT = UInt16(60355)
 const DEFAULT_REDIRECT_URI = "http://localhost:60355/callback"
 const AUTH_TIMEOUT = 300.0  # 5 minutes
-const OAUTH_HTTP_CLIENT = HTTP.Client(
-    connect_timeout = 10,
-    request_timeout = 60,
-    response_header_timeout = 10,
-    read_idle_timeout = 30,
-)
 
 function _token_dir()
     dir = get(ENV, "LONGBRIDGE_TOKEN_DIR", "")
@@ -200,8 +195,12 @@ function refresh_token!(handle::OAuthHandle)
 
     resp = HTTP.post(
         OAUTH_BASE_URL * OAUTH_TOKEN_PATH;
-        client = OAUTH_HTTP_CLIENT,
+        client = HTTP_CLIENT,
         headers = ["Content-Type" => "application/x-www-form-urlencoded"],
+        connect_timeout = OAUTH_TIMEOUT.connect,
+        request_timeout = OAUTH_TIMEOUT.request,
+        response_header_timeout = OAUTH_TIMEOUT.response_header,
+        read_idle_timeout = OAUTH_TIMEOUT.read,
         body = HTTP.URIs.escapeuri(
             Dict(
                 "grant_type" => "refresh_token",
@@ -323,8 +322,12 @@ function authorize!(handle::OAuthHandle, open_url_fn)
         # Exchange code for token
         resp = HTTP.post(
             OAUTH_BASE_URL * OAUTH_TOKEN_PATH;
-            client = OAUTH_HTTP_CLIENT,
+            client = HTTP_CLIENT,
             headers = ["Content-Type" => "application/x-www-form-urlencoded"],
+            connect_timeout = OAUTH_TIMEOUT.connect,
+            request_timeout = OAUTH_TIMEOUT.request,
+            response_header_timeout = OAUTH_TIMEOUT.response_header,
+            read_idle_timeout = OAUTH_TIMEOUT.read,
             body = HTTP.URIs.escapeuri(
                 Dict(
                     "grant_type" => "authorization_code",

@@ -6,7 +6,12 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.2** — quote-profile limits, explicit UTC/raw candlestick timestamps, optional market-time conversion, and an OAuth data-center routing fix.
+Latest release: **v0.9.3** — lifecycle-safe WebSocket teardown with idempotent `disconnect!`/`close`, automatic Context cleanup, and a shared process-wide HTTP client.
+
+### v0.9.3 migration notes
+
+- `disconnect!(ctx)` and `close(ctx)` are now idempotent and perform deterministic teardown: they close the command/push channels, wake pending requests, and stop reconnect work before returning. Calling `close(ctx)` explicitly remains the recommended way to release connections. Dropping a Context now triggers best-effort automatic cleanup.
+- REST, OAuth, and legacy token-refresh requests share one process-wide `HTTP.Client`, so connection pooling and transport state are now shared. OAuth token exchanges keep their existing 60-second request / 10-second response-header / 30-second read-idle timeouts.
 
 ### v0.9.2 migration notes
 
@@ -179,6 +184,10 @@ history_temp = history_market_temperature(ctx, Market.US, Date(2025, 7, 1), Date
 disconnect!(ctx)
 ```
 
+`close(ctx)` is equivalent. Context finalizers perform best-effort automatic
+cleanup, but call `close` or `disconnect!` explicitly when deterministic
+connection teardown matters.
+
 ### Trading
 
 ```julia
@@ -262,7 +271,7 @@ Quote.unsubscribe(ctx, ["GOOGL.US"], [SubType.QUOTE, SubType.DEPTH])
 - `OAuthBuilder(client_id) |> build(open_url_fn)`: Build an OAuth handle with browser-based authorization
 - `QuoteContext(config)`: Create and connect to `QuoteContext`
 - `TradeContext(config)`: Create and connect to `TradeContext`
-- `disconnect!(ctx)`: Disconnect from the server
+- `disconnect!(ctx)` / `close(ctx)`: Disconnect and stop the Context background tasks
 
 ### Quote Fetching
 - `static_info(ctx, symbols)`: Get basic static information for securities
