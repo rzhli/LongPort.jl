@@ -6,7 +6,7 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.3** —— 生命周期安全的 WebSocket 关闭、幂等的 `disconnect!`/`close`、Context 自动清理，以及共享的进程内 HTTP 客户端。
+最新版本：**v0.9.4** —— 补充说明 `QuoteContext`/`TradeContext` 的外层/内部句柄设计；无 API 变更。
 
 ### v0.9.3 迁移说明
 

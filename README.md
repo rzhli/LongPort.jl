@@ -6,7 +6,7 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.3** — lifecycle-safe WebSocket teardown with idempotent `disconnect!`/`close`, automatic Context cleanup, and a shared process-wide HTTP client.
+Latest release: **v0.9.4** — documented the outer/inner handle design of `QuoteContext`/`TradeContext`; no API change.
 
 ### v0.9.3 migration notes
 

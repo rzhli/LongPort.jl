@@ -52,6 +52,19 @@ struct UnsubscribeCmd <: AbstractCommand
     resp_ch::Channel{Any}
 end
 
+"""
+    InnerTradeContext
+
+Internal, mutable worker state owned by [`TradeContext`](@ref). The background
+`run_trade_loop` task operates directly on this object. It is `mutable` because
+the connection, `session_id`, the background task, and the runtime caches are
+created or replaced after construction.
+
+This type is private to the `Trade` module — nothing outside it should reach for
+`inner` or rebind it. Do not hold the outer `TradeContext` from inside a
+background task; these tasks retain only this object, so the outer handle stays
+collectable and its finalizer can signal the loop to stop.
+"""
 mutable struct InnerTradeContext
     config::Config.Settings
     ws_client::Union{Client.WSClient,Nothing}
@@ -62,6 +75,23 @@ mutable struct InnerTradeContext
     subscriptions::Set{String}
 end
 
+@doc """
+    TradeContext
+
+Public handle to a trade SDK session.
+
+The session's mutable state lives in the internal [`InnerTradeContext`](@ref)
+(`ctx.inner`); this handle only ever routes to that single shared `inner`
+reference. The handle is a `mutable struct` not because users mutate it — they
+never do, and `inner` is private — but because Julia requires a mutable object to
+attach a finalizer, which is what implements the automatic cleanup when the last
+reference to the handle is dropped.
+
+Keep this outer/inner split. The background `run_trade_loop` task retains only
+`inner`, never the outer `TradeContext`, so the handle is not pinned by it and can
+be collected once the last user reference goes away. Do not rebind `ctx.inner`,
+and do not fold the state fields into `TradeContext`.
+"""
 mutable struct TradeContext
     inner::InnerTradeContext
 end

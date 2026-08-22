@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.9.4 (2026-08-22)
+
+### Documentation
+
+- Documented the outer/inner handle design on `QuoteContext`/`TradeContext` and their internal `InnerQuoteContext`/`InnerTradeContext` worker types. Each public handle owns a single `inner` reference to the mutable worker state; the background tasks retain only `inner`, never the outer handle, so the handle stays collectable and dropping it can run the finalizer that signals the loops to stop. The handle is a `mutable struct` because Julia requires a mutable object to attach a finalizer — users do not mutate it, and `inner` is private. No behavior changed.
+
 ## v0.9.3 (2026-08-15)
 
 ### Reliability and resource lifecycle

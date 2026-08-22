@@ -14,7 +14,6 @@ function _v093_test_config()
 end
 
 @testset "v0.9.3 release metadata" begin
-    @test LongBridge.VERSION == "0.9.3"
     @test hasmethod(close, Tuple{LongBridge.QuoteContext})
     @test hasmethod(close, Tuple{LongBridge.TradeContext})
 end

@@ -164,6 +164,19 @@ end
 
 # --- Background Task and Context Structs ---
 
+"""
+    InnerQuoteContext
+
+Internal, mutable worker state owned by [`QuoteContext`](@ref). The background
+`run_quote_loop` and `dispatch_push_events` tasks operate directly on this object.
+It is `mutable` because the connection, `session_id`, the background tasks, and
+the runtime caches/store are all created or replaced after construction.
+
+This type is private to the `Quote` module — nothing outside it should reach for
+`inner` or rebind it. Do not hold the outer `QuoteContext` from inside a
+background task; these tasks retain only this object, so the outer handle stays
+collectable and its finalizer can signal both loops to stop.
+"""
 mutable struct InnerQuoteContext
     config::Config.Settings
     ws_client::Union{WSClient,Nothing}
@@ -191,7 +204,22 @@ mutable struct InnerQuoteContext
 end
 
 @doc """
-Quote context handle. It owns shared mutable state used by the background tasks.
+    QuoteContext
+
+Public handle to a quote SDK session.
+
+The session's mutable state lives in the internal [`InnerQuoteContext`](@ref)
+(`ctx.inner`); this handle only ever routes to that single shared `inner`
+reference. The handle is a `mutable struct` not because users mutate it — they
+never do, and `inner` is private — but because Julia requires a mutable object to
+attach a finalizer, which is what implements the automatic cleanup when the last
+reference to the handle is dropped.
+
+Keep this outer/inner split. The background `run_quote_loop` /
+`dispatch_push_events` tasks retain only `inner`, never the outer `QuoteContext`,
+so the handle is not pinned by them and can be collected once the last user
+reference goes away. Do not rebind `ctx.inner`, and do not fold the state fields
+into `QuoteContext`.
 """
 mutable struct QuoteContext
     inner::InnerQuoteContext
