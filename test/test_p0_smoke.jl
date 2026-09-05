@@ -6,8 +6,8 @@ using LongBridge.TradeProtocol: AccountBalance, BalanceType, CashFlow, CashFlowD
                                StockPositionsResponse
 using LongBridge.Utils: Dec64, symbol_to_counter_id, index_symbol_to_counter_id,
                        counter_id_to_symbol, lookup_counter_id, is_etf,
-                       _parse_optional_decimal, safeparse
-using JSON3, StructTypes, Dates
+                       _parse_optional_decimal, safeparse, construct
+using JSON, Dates
 
 # =========================================================================
 # P0: 新增 Context 全部加载并可构造
@@ -85,7 +85,7 @@ end
      "net_assets":"1200.75","init_margin":"100","maintenance_margin":"80","buy_power":"3000",
      "frozen_transaction_fees":[{"currency":"HKD","frozen_transaction_fee":"12.34"}],
      "market":"US"}"""
-    balance = StructTypes.construct(AccountBalance, JSON3.read(raw))
+    balance = construct(AccountBalance, JSON.parse(raw))
 
     @test balance.currency === Currency.USD
     @test balance.risk_level === RiskLevel.Moderate
@@ -104,7 +104,7 @@ end
     {"transaction_flow_name":"存入资金","direction":1,"business_type":0,
      "balance":1000.5,"currency":"USD","business_time":"1746748800",
      "symbol":null,"description":"deposit"}"""
-    flow = StructTypes.construct(CashFlow, JSON3.read(raw))
+    flow = construct(CashFlow, JSON.parse(raw))
 
     @test flow.transaction_flow_name == "存入资金"
     @test flow.direction === CashFlowDirection.Out
@@ -150,7 +150,7 @@ end
        "type":"financial","datetime":"1747257600","star":3,"id":"evt-1","live":null,"ext":null}
     ]}]}
     """
-    resp = StructTypes.construct(CalendarEventsResponse, JSON3.read(raw))
+    resp = construct(CalendarEventsResponse, JSON.parse(raw))
     @test resp.date == "2026-05-15"
     @test resp.next_date == "2026-05-16"
     @test length(resp.list[1].infos) == 1
@@ -160,7 +160,7 @@ end
     @test info.data_kv[1].value_raw == Dec64("3.21")
 
     # 空响应
-    empty_resp = StructTypes.construct(CalendarEventsResponse, JSON3.read("""{"date":"x","list":[]}"""))
+    empty_resp = construct(CalendarEventsResponse, JSON.parse("""{"date":"x","list":[]}"""))
     @test empty_resp.next_date == ""
     @test isempty(empty_resp.list)
 end
@@ -178,27 +178,27 @@ end
     @test _asset_type_from_str("crypto")   === AssetType.Crypto
 
     # ExchangeRates
-    exr = StructTypes.construct(ExchangeRates, JSON3.read("""
+    exr = construct(ExchangeRates, JSON.parse("""
         {"exchanges":[{"average_rate":7.79,"base_currency":"USD","bid_rate":7.78,"offer_rate":7.80,"other_currency":"HKD"}]}"""))
     @test length(exr.exchanges) == 1
     @test exr.exchanges[1].base_currency == "USD"
 
     # FlowItem
-    fi = StructTypes.construct(FlowItem, JSON3.read("""
+    fi = construct(FlowItem, JSON.parse("""
         {"executed_date":"2026-05-15","code":"AAPL","direction":"buy",
          "executed_quantity":"100","executed_price":"172.50","executed_cost":"17250"}"""))
     @test fi.direction === FlowDirection.Buy
     @test fi.executed_quantity == Dec64("100")
     @test fi.executed_timestamp === nothing
 
-    fi2 = StructTypes.construct(FlowItem, JSON3.read("""
+    fi2 = construct(FlowItem, JSON.parse("""
         {"executed_date":"2026-05-15","executed_timestamp":"1747257600",
          "code":"AAPL","direction":"sell"}"""))
     @test fi2.direction === FlowDirection.Sell
     @test fi2.executed_timestamp == "1747257600"
 
     # 空字段兜底
-    bm = StructTypes.construct(ProfitAnalysisByMarket, JSON3.read("""{}"""))
+    bm = construct(ProfitAnalysisByMarket, JSON.parse("""{}"""))
     @test !bm.has_more
     @test isnothing(bm.profit)
 end
@@ -219,7 +219,7 @@ end
     @test _market_from_str("xx") === Market.Unknown
 
     # MarketStatusResponse
-    ms = StructTypes.construct(MarketStatusResponse, JSON3.read("""
+    ms = construct(MarketStatusResponse, JSON.parse("""
         {"market_time":[{"market":"HK","trade_status":102,"timestamp":"1747257600",
          "delay_trade_status":108,"delay_timestamp":"1747257600","sub_status":0,"delay_sub_status":0}]}"""))
     @test length(ms.market_time) == 1
@@ -229,7 +229,7 @@ end
     @test LongBridge.MarketProtocol._market_trade_status_code(ms.market_time[1].trade_status) == 102
 
     # BrokerHoldingTop（含 chg 为空）
-    top = StructTypes.construct(BrokerHoldingTop, JSON3.read("""
+    top = construct(BrokerHoldingTop, JSON.parse("""
         {"buy":[{"name":"瑞银","parti_number":"6727","chg":"1000","strong":true},
                 {"name":"中金","parti_number":"6996","chg":"","strong":false}],
          "sell":[],"updated_at":"2026-05-15"}"""))
@@ -238,14 +238,14 @@ end
     @test isnothing(top.buy[2].chg)
 
     # AhPremiumKline (empty_is_zero 语义)
-    ahk = StructTypes.construct(AhPremiumKline, JSON3.read("""
+    ahk = construct(AhPremiumKline, JSON.parse("""
         {"aprice":"42.5","apreclose":"","hprice":"380","hpreclose":"385",
          "currency_rate":"0.91","ahpremium_rate":"-15.2","price_spread":"-12.5","timestamp":"1747257600"}"""))
     @test ahk.aprice == Dec64("42.5")
     @test ahk.apreclose == Dec64(0)
 
     # ConstituentStock (counter_id 转换 + JSON null 兜底)
-    cs = StructTypes.construct(ConstituentStock, JSON3.read("""
+    cs = construct(ConstituentStock, JSON.parse("""
         {"counter_id":"ST/HK/700","name":"腾讯","last_done":"380.5","prev_close":"385",
          "inflow":"-1500000","balance":null,"amount":"15000000","total_shares":"9000000000",
          "tags":["龙头"],"intro":"互联网","market":"HK","circulating_shares":"3000000000",
@@ -273,14 +273,14 @@ end
     @test _institution_recommend_from_str("xx")          === InstitutionRecommend.Unknown
 
     # DividendList
-    dl = StructTypes.construct(DividendList, JSON3.read("""
+    dl = construct(DividendList, JSON.parse("""
         {"list":[{"counter_id":"ST/HK/700","id":"1","desc":"每股派息 5.3 HKD",
                   "record_date":"2026.05.18","ex_date":"2026.05.15","payment_date":"2026.06.01"}]}"""))
     @test length(dl.list) == 1
     @test dl.list[1].symbol == "700.HK"
 
     # InstitutionRatingSummary (recommend 字符串映射 + 可选 Decimal)
-    rs = StructTypes.construct(InstitutionRatingSummary, JSON3.read("""
+    rs = construct(InstitutionRatingSummary, JSON.parse("""
         {"ccy_symbol":"HK\$","change":"5.2","recommend":"buy","target":"420","updated_at":"x",
          "evaluate":{"buy":5,"date":"2026-05-15","hold":3,"sell":0,"strong_buy":2,"under":0}}"""))
     @test rs.recommend === InstitutionRecommend.Buy
@@ -296,20 +296,20 @@ end
      "bus_license":"123","accounting_firm":"PwC","securities_rep":"郭凯天","legal_counsel":"金杜",
      "zip_code":"518057","ticker":"00700","icon":"http://x/icon","profile":"互联网","sector":1001}
     """
-    co = StructTypes.construct(CompanyOverview, JSON3.read(co_raw))
+    co = construct(CompanyOverview, JSON.parse(co_raw))
     @test co.phone == "+86-755"
     @test co.issue_price == Dec64("3.7")
     @test co.sector == 1001
 
     # FundHolder (position_ratio 用 empty_is_zero)
-    fh = StructTypes.construct(FundHolder, JSON3.read("""
+    fh = construct(FundHolder, JSON.parse("""
         {"code":"513050","counter_id":"ETF/SH/513050","currency":"CNY","name":"中概 ETF",
          "position_ratio":"0.05","report_date":"2025.12.31"}"""))
     @test fh.symbol == "513050.SH"
     @test fh.position_ratio == Dec64("0.05")
 
     # FundHolder（position_ratio 缺失）
-    fh2 = StructTypes.construct(FundHolder, JSON3.read("""
+    fh2 = construct(FundHolder, JSON.parse("""
         {"code":"X","counter_id":"ETF/SH/X","currency":"CNY","name":"X","position_ratio":"","report_date":""}"""))
     @test fh2.position_ratio == Dec64(0)
 end
@@ -326,7 +326,7 @@ end
 
     # ShortPositionsResponse —— v0.8.0 改为不再含 symbol/sources 外层字段，
     # 且 item 是 ShortPositionsItem，timestamp 现在是 DateTime (UTC)。
-    sp = StructTypes.construct(ShortPositionsResponse, JSON3.read("""
+    sp = construct(ShortPositionsResponse, JSON.parse("""
         {"counter_id":"ST/US/TSLA","data":[
           {"timestamp":"1747257600","rate":"0.03","avg_daily_share_volume":"100000000",
            "current_shares_short":"50000000","days_to_cover":"0.5","close":"350.5"}]}"""))
@@ -337,12 +337,12 @@ end
     @test sp.data[1].current_shares_short == "50000000"
 
     # OptionVolumeStats
-    ov = StructTypes.construct(OptionVolumeStats, JSON3.read("""{"c":"100000","p":"50000"}"""))
+    ov = construct(OptionVolumeStats, JSON.parse("""{"c":"100000","p":"50000"}"""))
     @test ov.c == "100000"
     @test ov.p == "50000"
 
     # OptionVolumeDaily
-    ovd = StructTypes.construct(OptionVolumeDaily, JSON3.read("""
+    ovd = construct(OptionVolumeDaily, JSON.parse("""
         {"stats":[{"underlying_counter_id":"ST/US/AAPL","timestamp":"1747257600",
                    "total_volume":"1000","total_put_volume":"400","total_call_volume":"600",
                    "put_call_volume_ratio":"0.67","total_open_interest":"10000",

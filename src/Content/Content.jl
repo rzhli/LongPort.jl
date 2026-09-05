@@ -1,10 +1,9 @@
 module Content
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
+using ..Utils: construct
 using ..ContentProtocol
 
 export ContentContext,
@@ -43,7 +42,7 @@ function _construct_items(::Type{T}, data) where {T}
     if !haskey(data, :items) || isnothing(data.items)
         return T[]
     end
-    return StructTypes.construct.(T, data.items)
+    return construct.(T, data.items)
 end
 
 # ── my_topics ──────────────────────────────────────────────────────
@@ -129,7 +128,7 @@ end
 function topic_detail(ctx::ContentContext, id::AbstractString)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/content/topics/$(String(id))"))
     _check(resp)
-    StructTypes.construct(OwnedTopic, resp.data.item)
+    construct(OwnedTopic, resp.data.item)
 end
 
 # ── topic_replies ──────────────────────────────────────────────────
@@ -192,7 +191,7 @@ function create_topic_reply(
         ),
     )
     _check(resp)
-    StructTypes.construct(TopicReply, resp.data.item)
+    construct(TopicReply, resp.data.item)
 end
 
 # ── news ───────────────────────────────────────────────────────────

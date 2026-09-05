@@ -1,7 +1,8 @@
 module USProtocol
 
-using Dates, JSON3, StructTypes
+using Dates, JSON
 using ..Utils: counter_id_to_symbol
+import ..Utils: construct
 
 export USRankTag,
     USSharelistItem,
@@ -48,7 +49,7 @@ export USRankTag,
     USRealizedPL,
     construct_us
 
-Base.@kwdef mutable struct USRankTag
+@kwarg mutable struct USRankTag
     key::String = ""
     location::Int = 0
     title::String = ""
@@ -57,23 +58,22 @@ Base.@kwdef mutable struct USRankTag
     highlight_text::String = ""
 end
 
-Base.@kwdef mutable struct USSharelistItem
+@kwarg mutable struct USSharelistItem
     chg::String = ""
     id::String = ""
     name::String = ""
 end
 
-Base.@kwdef mutable struct USAIChatData
+@kwarg mutable struct USAIChatData
     agent_id::String = ""
     handoff_agent_id::String = ""
     symbol::String = ""
     text::String = ""
-    chat_type::String = ""
+    chat_type::String = "" &(json = (name = "type",),)
     workflow_type::String = ""
 end
-StructTypes.names(::Type{USAIChatData}) = ((:chat_type, :type),)
 
-Base.@kwdef mutable struct USCompanyOverview
+@kwarg mutable struct USCompanyOverview
     intro::String = ""
     market_cap::String = ""
     ccy_symbol::String = ""
@@ -82,7 +82,7 @@ Base.@kwdef mutable struct USCompanyOverview
     share_list::Vector{USSharelistItem} = USSharelistItem[]
 end
 
-Base.@kwdef mutable struct USValuationMetric
+@kwarg mutable struct USValuationMetric
     circle::String = ""
     part::String = ""
     metric::String = ""
@@ -90,7 +90,7 @@ Base.@kwdef mutable struct USValuationMetric
     industry_median::String = ""
 end
 
-Base.@kwdef mutable struct USValuationOverview
+@kwarg mutable struct USValuationOverview
     metrics::Dict{String,USValuationMetric} = Dict{String,USValuationMetric}()
     indicator::String = ""
     range::Int = 0
@@ -100,34 +100,34 @@ Base.@kwdef mutable struct USValuationOverview
     ai_summary::String = ""
 end
 
-Base.@kwdef mutable struct USReportPeriod
+@kwarg mutable struct USReportPeriod
     start_date::String = ""
     end_date::String = ""
     report_txt::String = ""
 end
 
-Base.@kwdef mutable struct USFinancialISItem
+@kwarg mutable struct USFinancialISItem
     revenue::String = ""
     net_income::String = ""
     net_margin::String = ""
     report::USReportPeriod = USReportPeriod()
 end
 
-Base.@kwdef mutable struct USFinancialBSItem
+@kwarg mutable struct USFinancialBSItem
     debt_assets_ratio::String = ""
     total_assets::String = ""
     total_liabilities::String = ""
     report::USReportPeriod = USReportPeriod()
 end
 
-Base.@kwdef mutable struct USFinancialCFItem
+@kwarg mutable struct USFinancialCFItem
     operating::String = ""
     investing::String = ""
     financing::String = ""
     report::USReportPeriod = USReportPeriod()
 end
 
-Base.@kwdef mutable struct USFinancialOverview
+@kwarg mutable struct USFinancialOverview
     ccy_symbol::String = ""
     report_type::String = ""
     is_list::Vector{USFinancialISItem} = USFinancialISItem[]
@@ -135,7 +135,7 @@ Base.@kwdef mutable struct USFinancialOverview
     cf_list::Vector{USFinancialCFItem} = USFinancialCFItem[]
 end
 
-Base.@kwdef mutable struct USFinancialStatementField
+@kwarg mutable struct USFinancialStatementField
     display_order::Int = 0
     field::String = ""
     id::String = ""
@@ -146,7 +146,7 @@ Base.@kwdef mutable struct USFinancialStatementField
     yoy::String = ""
 end
 
-Base.@kwdef mutable struct USFinancialStatementPeriod
+@kwarg mutable struct USFinancialStatementPeriod
     ff_period::String = ""
     ff_year::Int = 0
     fields::Vector{USFinancialStatementField} = USFinancialStatementField[]
@@ -155,14 +155,14 @@ Base.@kwdef mutable struct USFinancialStatementPeriod
     rpt_date::String = ""
 end
 
-Base.@kwdef mutable struct USFinancialStatement
+@kwarg mutable struct USFinancialStatement
     currency::String = ""
     report::String = ""
     list::Vector{USFinancialStatementPeriod} = USFinancialStatementPeriod[]
     empty_fields::Vector{String} = String[]
 end
 
-Base.@kwdef mutable struct USKeyMetricItem
+@kwarg mutable struct USKeyMetricItem
     ff_period::String = ""
     ff_year::Int = 0
     fp_end::String = ""
@@ -171,19 +171,19 @@ Base.@kwdef mutable struct USKeyMetricItem
     fields::Vector{Any} = Any[]
 end
 
-Base.@kwdef mutable struct USKeyFinancialMetrics
+@kwarg mutable struct USKeyFinancialMetrics
     currency::String = ""
     report::String = ""
     empty_fields::Vector{String} = String[]
     list::Vector{USKeyMetricItem} = USKeyMetricItem[]
 end
 
-Base.@kwdef mutable struct USConsensusEstimate
+@kwarg mutable struct USConsensusEstimate
     actual::String = ""
     estimate::String = ""
 end
 
-Base.@kwdef mutable struct USConsensusItem
+@kwarg mutable struct USConsensusItem
     ebit::USConsensusEstimate = USConsensusEstimate()
     eps::USConsensusEstimate = USConsensusEstimate()
     fiscal_year::Int = 0
@@ -191,7 +191,7 @@ Base.@kwdef mutable struct USConsensusItem
     revenue::USConsensusEstimate = USConsensusEstimate()
 end
 
-Base.@kwdef mutable struct USAnalystConsensus
+@kwarg mutable struct USAnalystConsensus
     ai_summary::String = ""
     aichat_data::USAIChatData = USAIChatData()
     currency::String = ""
@@ -201,7 +201,7 @@ Base.@kwdef mutable struct USAnalystConsensus
     h5_data::Any = nothing
 end
 
-Base.@kwdef mutable struct USFiscalYearDividend
+@kwarg mutable struct USFiscalYearDividend
     dividend::String = ""
     dividend_yield::String = ""
     fiscal_year::String = ""
@@ -209,7 +209,7 @@ Base.@kwdef mutable struct USFiscalYearDividend
     fiscal_year_range::String = ""
 end
 
-Base.@kwdef mutable struct USETFDividendInfo
+@kwarg mutable struct USETFDividendInfo
     dividend_ttm::String = ""
     dividend_yield_ttm::String = ""
     dividend_frequency::String = ""
@@ -217,14 +217,14 @@ Base.@kwdef mutable struct USETFDividendInfo
     fiscal_year_info::Vector{USFiscalYearDividend} = USFiscalYearDividend[]
 end
 
-Base.@kwdef mutable struct USRecentDividend
+@kwarg mutable struct USRecentDividend
     dividend_ttm::String = ""
     dividend_yield_ttm::String = ""
     payouts::String = ""
     currency::String = ""
 end
 
-Base.@kwdef mutable struct USDividendHistoryItem
+@kwarg mutable struct USDividendHistoryItem
     fiscal_year::String = ""
     fiscal_year_range::String = ""
     total_shareholder_yield::String = ""
@@ -241,7 +241,7 @@ Base.@kwdef mutable struct USDividendHistoryItem
     currency::String = ""
 end
 
-Base.@kwdef mutable struct USDividendPayoutRecord
+@kwarg mutable struct USDividendPayoutRecord
     dividend::String = ""
     dividend_type::String = ""
     currency::String = ""
@@ -252,14 +252,14 @@ Base.@kwdef mutable struct USDividendPayoutRecord
     start_time_unix::String = ""
 end
 
-Base.@kwdef mutable struct USCompanyDividends
+@kwarg mutable struct USCompanyDividends
     recent_dividends::USRecentDividend = USRecentDividend()
     dividend_history::Vector{USDividendHistoryItem} = USDividendHistoryItem[]
     payout_ratios::Vector{USDividendHistoryItem} = USDividendHistoryItem[]
     dividend_payout_history::Vector{USDividendPayoutRecord} = USDividendPayoutRecord[]
 end
 
-Base.@kwdef mutable struct USETFFile
+@kwarg mutable struct USETFFile
     file_name::String = ""
     file_path::String = ""
     update_date::String = ""
@@ -267,11 +267,11 @@ Base.@kwdef mutable struct USETFFile
     format::String = ""
 end
 
-Base.@kwdef mutable struct USETFFilesResponse
+@kwarg mutable struct USETFFilesResponse
     files::Vector{USETFFile} = USETFFile[]
 end
 
-Base.@kwdef mutable struct USCryptoOverview
+@kwarg mutable struct USCryptoOverview
     name::String = ""
     ticker::String = ""
     currency::String = ""
@@ -282,21 +282,20 @@ Base.@kwdef mutable struct USCryptoOverview
     ipo_date::String = ""
     issue_price::String = ""
     shares::String = ""
-    symbol::String = ""
+    symbol::String = "" &(json = (name = "counter_id",),)
     base_asset::String = ""
     official_web_address::String = ""
     logo::String = ""
     wiki_url::String = ""
     profile::String = ""
 end
-StructTypes.names(::Type{USCryptoOverview}) = ((:symbol, :counter_id),)
 
-Base.@kwdef mutable struct QueryUSOrdersResponse
+@kwarg mutable struct QueryUSOrdersResponse
     orders::Vector{Any} = Any[]
     total_count::Int = 0
 end
 
-Base.@kwdef mutable struct USOrderHistory
+@kwarg mutable struct USOrderHistory
     exec_type::Int = 0
     status::String = ""
     price::String = ""
@@ -314,25 +313,25 @@ Base.@kwdef mutable struct USOrderHistory
     exec_id::String = ""
 end
 
-Base.@kwdef mutable struct USButtonControl
+@kwarg mutable struct USButtonControl
     withdraw::Int = 0
     replace::Int = 0
     exceptionable::Vector{String} = String[]
 end
 
-Base.@kwdef mutable struct USChargeItem
+@kwarg mutable struct USChargeItem
     code::Int = 0
     name::String = ""
     fees::Vector{String} = String[]
 end
 
-Base.@kwdef mutable struct USChargeDetail
+@kwarg mutable struct USChargeDetail
     currency::String = ""
     total_amount::String = ""
     items::Vector{USChargeItem} = USChargeItem[]
 end
 
-Base.@kwdef mutable struct USAttachedOrder
+@kwarg mutable struct USAttachedOrder
     attached_type_display::Int = 0
     executed_qty::String = ""
     quantity::String = ""
@@ -345,18 +344,17 @@ Base.@kwdef mutable struct USAttachedOrder
     activate_order_type::String = ""
     activate_rth::Int = 0
     submit_price::String = ""
-    symbol::String = ""
+    symbol::String = "" &(json = (name = "counter_id",),)
     withdrawn::Bool = false
 end
-StructTypes.names(::Type{USAttachedOrder}) = ((:symbol, :counter_id),)
 
-Base.@kwdef mutable struct USOrderDetail
+@kwarg mutable struct USOrderDetail
     id::String = ""
     aaid::String = ""
     account_channel::String = ""
     action::Int = 0
-    symbol::String = ""
-    underlying_symbol::String = ""
+    symbol::String = "" &(json = (name = "counter_id",),)
+    underlying_symbol::String = "" &(json = (name = "underlying_counter_id",),)
     security_type::String = ""
     name::String = ""
     currency::String = ""
@@ -430,18 +428,14 @@ Base.@kwdef mutable struct USOrderDetail
     attached_orders::Vector{USAttachedOrder} = USAttachedOrder[]
     order_histories::Vector{USOrderHistory} = USOrderHistory[]
 end
-StructTypes.names(::Type{USOrderDetail}) = (
-    (:symbol, :counter_id),
-    (:underlying_symbol, :underlying_counter_id),
-)
 
-Base.@kwdef mutable struct USOrderDetailResponse
+@kwarg mutable struct USOrderDetailResponse
     order::Union{USOrderDetail,Nothing} = nothing
     current_attached_order::Union{USOrderDetail,Nothing} = nothing
     current_millisecond::String = ""
 end
 
-Base.@kwdef mutable struct USCashEntry
+@kwarg mutable struct USCashEntry
     currency::String = ""
     frozen_buy_cash::String = ""
     outstanding::String = ""
@@ -450,18 +444,17 @@ Base.@kwdef mutable struct USCashEntry
     total_cash::String = ""
 end
 
-Base.@kwdef mutable struct USCryptoEntry
+@kwarg mutable struct USCryptoEntry
     asset_type::String = ""
     average_cost::String = ""
-    symbol::String = ""
+    symbol::String = "" &(json = (name = "counter_id",),)
     currency::String = ""
     industry_name::String = ""
 end
-StructTypes.names(::Type{USCryptoEntry}) = ((:symbol, :counter_id),)
 
-Base.@kwdef mutable struct USStockEntry
+@kwarg mutable struct USStockEntry
     symbol::String = ""
-    full_symbol::String = ""
+    full_symbol::String = "" &(json = (name = "counter_id",),)
     asset_type::String = ""
     quantity::String = ""
     currency::String = ""
@@ -484,9 +477,8 @@ Base.@kwdef mutable struct USStockEntry
     industry_counter_id::String = ""
     industry_name::String = ""
 end
-StructTypes.names(::Type{USStockEntry}) = ((:full_symbol, :counter_id),)
 
-Base.@kwdef mutable struct USAssetOverview
+@kwarg mutable struct USAssetOverview
     account_type::String = ""
     asset_timestamp::Union{DateTime,Nothing} = nothing
     cash_buy_power::String = ""
@@ -499,44 +491,29 @@ Base.@kwdef mutable struct USAssetOverview
     multi_leg::Any = nothing
 end
 
-Base.@kwdef mutable struct USRealizedPLMetric
+@kwarg mutable struct USRealizedPLMetric
     amount::String = ""
     period::Int = 0
     rate::String = ""
 end
 
-Base.@kwdef mutable struct USRealizedPLEntry
+@kwarg mutable struct USRealizedPLEntry
     category::Int = 0
     currency::String = ""
     metrics::Vector{USRealizedPLMetric} = USRealizedPLMetric[]
 end
 
-Base.@kwdef mutable struct USRealizedPL
+@kwarg mutable struct USRealizedPL
     realized_pl_list::Vector{USRealizedPLEntry} = USRealizedPLEntry[]
 end
 
-const _MUTABLE_JSON_TYPES = (
-    USRankTag, USSharelistItem, USAIChatData, USCompanyOverview,
-    USValuationMetric, USValuationOverview, USReportPeriod,
-    USFinancialISItem, USFinancialBSItem, USFinancialCFItem, USFinancialOverview,
-    USFinancialStatementField, USFinancialStatementPeriod, USFinancialStatement,
-    USKeyMetricItem, USKeyFinancialMetrics, USConsensusEstimate, USConsensusItem,
-    USAnalystConsensus, USFiscalYearDividend, USETFDividendInfo, USRecentDividend,
-    USDividendHistoryItem, USDividendPayoutRecord, USCompanyDividends, USETFFile,
-    USETFFilesResponse, USCryptoOverview, QueryUSOrdersResponse, USOrderHistory,
-    USButtonControl, USChargeItem, USChargeDetail, USAttachedOrder, USOrderDetail,
-    USOrderDetailResponse, USCashEntry, USCryptoEntry, USStockEntry,
-    USRealizedPLMetric, USRealizedPLEntry, USRealizedPL,
-)
+# All of the mutable structs above use `@kwarg` (StructUtils' `Base.@kwdef`
+# equivalent), so JSON.jl knows their field defaults and keyword constructor and
+# can materialize them directly from partial API payloads. No per-type trait
+# declaration is needed anymore.
 
-for T in _MUTABLE_JSON_TYPES
-    @eval StructTypes.StructType(::Type{$T}) = StructTypes.Mutable()
-end
-
-StructTypes.StructType(::Type{USAssetOverview}) = StructTypes.CustomStruct()
-
-construct_us(::Type{T}, obj) where {T} = JSON3.read(JSON3.write(obj), T)
-construct_us(::Type{USAssetOverview}, obj) = StructTypes.construct(USAssetOverview, obj)
+construct_us(::Type{T}, obj) where {T} = JSON.parse(JSON.json(obj), T)
+construct_us(::Type{USAssetOverview}, obj) = construct(USAssetOverview, obj)
 
 _get(obj, key::Symbol, default) = haskey(obj, key) ? obj[key] : default
 
@@ -553,7 +530,7 @@ function _unix_datetime(value)
     return isnothing(parsed) ? nothing : unix2datetime(parsed)
 end
 
-function StructTypes.construct(::Type{USAssetOverview}, obj)
+function construct(::Type{USAssetOverview}, obj)
     return USAssetOverview(
         account_type = String(_get(obj, :account_type, "")),
         asset_timestamp = _unix_datetime(_get(obj, :asset_timestamp, nothing)),

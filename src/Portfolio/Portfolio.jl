@@ -1,11 +1,11 @@
 module Portfolio
 
-using StructTypes, Dates
+using Dates
 
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id
+using ..Utils: construct, symbol_to_counter_id
 using ..PortfolioProtocol
 
 export PortfolioContext,
@@ -57,7 +57,7 @@ end
 function exchange_rate(ctx::PortfolioContext)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/asset/exchange_rates"))
     _check_or_raise(resp)
-    StructTypes.construct(ExchangeRates, resp.data)
+    construct(ExchangeRates, resp.data)
 end
 
 # ── profit_analysis (fan-out) ──────────────────────────────────────
@@ -104,8 +104,8 @@ function profit_analysis(
     _check_or_raise(sublist)
 
     ProfitAnalysis(
-        StructTypes.construct(ProfitAnalysisSummary, summary.data),
-        StructTypes.construct(ProfitAnalysisSublist, sublist.data),
+        construct(ProfitAnalysisSummary, summary.data),
+        construct(ProfitAnalysisSublist, sublist.data),
     )
 end
 
@@ -139,7 +139,7 @@ function profit_analysis_by_market(
         Client.http_get(ctx.config, "/v1/portfolio/profit-analysis/by-market"; params),
     )
     _check_or_raise(resp)
-    StructTypes.construct(ProfitAnalysisByMarket, resp.data)
+    construct(ProfitAnalysisByMarket, resp.data)
 end
 
 # ── profit_analysis_detail ─────────────────────────────────────────
@@ -166,7 +166,7 @@ function profit_analysis_detail(
         Client.http_get(ctx.config, "/v1/portfolio/profit-analysis/detail"; params),
     )
     _check_or_raise(resp)
-    StructTypes.construct(ProfitAnalysisDetail, resp.data)
+    construct(ProfitAnalysisDetail, resp.data)
 end
 
 # ── profit_analysis_flows ──────────────────────────────────────────
@@ -204,7 +204,7 @@ function profit_analysis_flows(
         Client.http_get(ctx.config, "/v1/portfolio/profit-analysis/flows"; params),
     )
     _check_or_raise(resp)
-    StructTypes.construct(ProfitAnalysisFlows, resp.data)
+    construct(ProfitAnalysisFlows, resp.data)
 end
 
 _to_date_str(::Nothing) = nothing

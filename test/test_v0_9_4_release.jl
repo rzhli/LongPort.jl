@@ -15,7 +15,7 @@ function _v094_test_config()
 end
 
 @testset "v0.9.4 release metadata" begin
-    @test LongBridge.VERSION == "0.9.4"
+    @test VersionNumber(LongBridge.VERSION) >= v"0.9.4"
 
     # Both the public handle and the worker state are mutable. The handle is
     # mutable because Julia requires a mutable object to attach a finalizer; the

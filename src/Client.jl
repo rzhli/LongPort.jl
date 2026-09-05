@@ -1,6 +1,6 @@
 module Client
 
-using HTTP, JSON3, SHA, CodecZlib
+using HTTP, JSON, SHA, CodecZlib
 using HTTP: WebSockets
 import HTTP.WebSockets: send
 using Base.Threads
@@ -169,7 +169,7 @@ function _http_request(
 )
     try
         query_string = _build_query_string(params)
-        body_str = isnothing(body) ? "" : JSON3.write(body)
+        body_str = isnothing(body) ? "" : JSON.json(body)
 
         if config.auth_mode == :oauth
             # OAuth mode: Bearer token, no HMAC signature

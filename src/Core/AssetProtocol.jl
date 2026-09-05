@@ -1,6 +1,8 @@
 module AssetProtocol
 
-using EnumX, JSON3, StructTypes
+using EnumX, JSON
+using ..Utils: JSONObject
+import ..Utils: construct
 
 export StatementType, StatementItem, GetStatementListResponse, GetStatementResponse
 
@@ -15,8 +17,7 @@ struct StatementItem
     dt::Int32
     file_key::String
 end
-StructTypes.StructType(::Type{StatementItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{StatementItem}, obj::JSON3.Object)
+function construct(::Type{StatementItem}, obj::JSONObject)
     StatementItem(Int32(get(obj, :dt, 0)), String(get(obj, :file_key, "")))
 end
 
@@ -25,10 +26,9 @@ end
 struct GetStatementListResponse
     list::Vector{StatementItem}
 end
-StructTypes.StructType(::Type{GetStatementListResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{GetStatementListResponse}, obj::JSON3.Object)
+function construct(::Type{GetStatementListResponse}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(StatementItem, e) for e in obj.list]
+        [construct(StatementItem, e) for e in obj.list]
     else
         StatementItem[]
     end
@@ -40,8 +40,7 @@ end
 struct GetStatementResponse
     url::String
 end
-StructTypes.StructType(::Type{GetStatementResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{GetStatementResponse}, obj::JSON3.Object)
+function construct(::Type{GetStatementResponse}, obj::JSONObject)
     GetStatementResponse(String(get(obj, :url, "")))
 end
 

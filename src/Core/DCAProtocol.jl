@@ -1,9 +1,9 @@
 module DCAProtocol
 
-using EnumX, JSON3, StructTypes
-using ..Utils: Dec64, counter_id_to_symbol
+using EnumX, JSON
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol
 using ..Constant: Market
-import ..Utils: _parse_optional_decimal
+import ..Utils: _parse_optional_decimal, construct
 import ..MarketProtocol: _market_from_str
 
 export DCAFrequency,
@@ -92,8 +92,7 @@ struct DcaPlan
     average_cost::Union{Dec64,Nothing}
     cum_profit::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{DcaPlan}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaPlan}, obj::JSON3.Object)
+function construct(::Type{DcaPlan}, obj::JSONObject)
     # per_invest_amount: empty_is_0
     pia_raw = get(obj, :per_invest_amount, "")
     per_invest_amount =
@@ -140,10 +139,9 @@ end
 struct DcaList
     plans::Vector{DcaPlan}
 end
-StructTypes.StructType(::Type{DcaList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaList}, obj::JSON3.Object)
+function construct(::Type{DcaList}, obj::JSONObject)
     items = if haskey(obj, :plans) && !isnothing(obj.plans)
-        [StructTypes.construct(DcaPlan, x) for x in obj.plans]
+        [construct(DcaPlan, x) for x in obj.plans]
     else
         DcaPlan[]
     end
@@ -161,10 +159,9 @@ struct DcaStats
     total_amount::Union{Dec64,Nothing}
     total_profit::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{DcaStats}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaStats}, obj::JSON3.Object)
+function construct(::Type{DcaStats}, obj::JSONObject)
     nearest = if haskey(obj, :nearest_plans) && !isnothing(obj.nearest_plans)
-        [StructTypes.construct(DcaPlan, x) for x in obj.nearest_plans]
+        [construct(DcaPlan, x) for x in obj.nearest_plans]
     else
         DcaPlan[]
     end
@@ -185,8 +182,7 @@ struct DcaSupportInfo
     symbol::String                       # 由 counter_id 转换
     support_regular_saving::Bool
 end
-StructTypes.StructType(::Type{DcaSupportInfo}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaSupportInfo}, obj::JSON3.Object)
+function construct(::Type{DcaSupportInfo}, obj::JSONObject)
     DcaSupportInfo(
         counter_id_to_symbol(String(get(obj, :counter_id, ""))),
         Bool(get(obj, :support_regular_saving, false)),
@@ -196,10 +192,9 @@ end
 struct DcaSupportList
     infos::Vector{DcaSupportInfo}
 end
-StructTypes.StructType(::Type{DcaSupportList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaSupportList}, obj::JSON3.Object)
+function construct(::Type{DcaSupportList}, obj::JSONObject)
     items = if haskey(obj, :infos) && !isnothing(obj.infos)
-        [StructTypes.construct(DcaSupportInfo, x) for x in obj.infos]
+        [construct(DcaSupportInfo, x) for x in obj.infos]
     else
         DcaSupportInfo[]
     end
@@ -220,8 +215,7 @@ struct DcaHistoryRecord
     rejected_reason::String
     symbol::String                          # 由 counter_id 转换
 end
-StructTypes.StructType(::Type{DcaHistoryRecord}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaHistoryRecord}, obj::JSON3.Object)
+function construct(::Type{DcaHistoryRecord}, obj::JSONObject)
     DcaHistoryRecord(
         String(get(obj, :created_at, "")),
         String(get(obj, :order_id, "")),
@@ -240,10 +234,9 @@ struct DcaHistoryResponse
     records::Vector{DcaHistoryRecord}
     has_more::Bool
 end
-StructTypes.StructType(::Type{DcaHistoryResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DcaHistoryResponse}, obj::JSON3.Object)
+function construct(::Type{DcaHistoryResponse}, obj::JSONObject)
     items = if haskey(obj, :records) && !isnothing(obj.records)
-        [StructTypes.construct(DcaHistoryRecord, x) for x in obj.records]
+        [construct(DcaHistoryRecord, x) for x in obj.records]
     else
         DcaHistoryRecord[]
     end
@@ -255,15 +248,13 @@ end
 struct DcaCreateResult
     plan_id::String
 end
-StructTypes.StructType(::Type{DcaCreateResult}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{DcaCreateResult}, obj::JSON3.Object) =
+construct(::Type{DcaCreateResult}, obj::JSONObject) =
     DcaCreateResult(String(get(obj, :plan_id, "")))
 
 struct DcaCalcDateResult
     trade_date::String
 end
-StructTypes.StructType(::Type{DcaCalcDateResult}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{DcaCalcDateResult}, obj::JSON3.Object) =
+construct(::Type{DcaCalcDateResult}, obj::JSONObject) =
     DcaCalcDateResult(String(get(obj, :trade_date, "")))
 
 end # module DCAProtocol

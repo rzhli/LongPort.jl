@@ -1,8 +1,8 @@
 module FundamentalProtocol
 
-using EnumX, JSON3, StructTypes, Dates
-using ..Utils: Dec64, counter_id_to_symbol, to_china_time
-import ..Utils: _parse_optional_decimal
+using EnumX, JSON, Dates
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol, to_china_time
+import ..Utils: _parse_optional_decimal, construct
 
 export FinancialReportKind,
     FinancialReportPeriod,
@@ -140,7 +140,7 @@ end
     Industry = 4
 end
 
-const RawJSON = Union{JSON3.Object,JSON3.Array,Dict{String,Any},Vector{Any},Nothing}
+const RawJSON = Union{JSON.Object{String,Any},Dict{String,Any},Vector{Any},Nothing}
 const MaybeNumber = Union{Int64,Float64,Nothing}
 
 _maybe_number(::Nothing)::MaybeNumber = nothing
@@ -202,8 +202,7 @@ end
 struct FinancialReports
     list::RawJSON                        # 嵌套数据结构因 kind 而异，保留原 JSON
 end
-StructTypes.StructType(::Type{FinancialReports}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{FinancialReports}, obj::JSON3.Object) =
+construct(::Type{FinancialReports}, obj::JSONObject) =
     FinancialReports(get(obj, :list, nothing))
 
 # ── institution_rating ─────────────────────────────────────────────
@@ -219,8 +218,7 @@ struct RatingEvaluate
     start_date::String
     end_date::String
 end
-StructTypes.StructType(::Type{RatingEvaluate}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingEvaluate}, obj::JSON3.Object)
+function construct(::Type{RatingEvaluate}, obj::JSONObject)
     RatingEvaluate(
         Int(get(obj, :buy, 0)),
         Int(get(obj, :over, 0)),
@@ -241,8 +239,7 @@ struct RatingTarget
     start_date::String
     end_date::String
 end
-StructTypes.StructType(::Type{RatingTarget}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingTarget}, obj::JSON3.Object)
+function construct(::Type{RatingTarget}, obj::JSONObject)
     RatingTarget(
         _parse_optional_decimal(get(obj, :highest_price, nothing)),
         _parse_optional_decimal(get(obj, :lowest_price, nothing)),
@@ -260,8 +257,7 @@ struct RatingSummaryEvaluate
     strong_buy::Int
     under::Int
 end
-StructTypes.StructType(::Type{RatingSummaryEvaluate}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingSummaryEvaluate}, obj::JSON3.Object)
+function construct(::Type{RatingSummaryEvaluate}, obj::JSONObject)
     RatingSummaryEvaluate(
         Int(get(obj, :buy, 0)),
         String(get(obj, :date, "")),
@@ -282,11 +278,10 @@ struct InstitutionRatingLatest
     industry_mean::Int
     industry_median::Int
 end
-StructTypes.StructType(::Type{InstitutionRatingLatest}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingLatest}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingLatest}, obj::JSONObject)
     InstitutionRatingLatest(
-        StructTypes.construct(RatingEvaluate, obj.evaluate),
-        StructTypes.construct(RatingTarget, obj.target),
+        construct(RatingEvaluate, obj.evaluate),
+        construct(RatingTarget, obj.target),
         Int64(get(obj, :industry_id, 0)),
         String(get(obj, :industry_name, "")),
         Int(get(obj, :industry_rank, 0)),
@@ -304,12 +299,11 @@ struct InstitutionRatingSummary
     target::Union{Dec64,Nothing}
     updated_at::String
 end
-StructTypes.StructType(::Type{InstitutionRatingSummary}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingSummary}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingSummary}, obj::JSONObject)
     InstitutionRatingSummary(
         String(get(obj, :ccy_symbol, "")),
         _parse_optional_decimal(get(obj, :change, nothing)),
-        StructTypes.construct(RatingSummaryEvaluate, obj.evaluate),
+        construct(RatingSummaryEvaluate, obj.evaluate),
         _institution_recommend_from_str(String(get(obj, :recommend, ""))),
         _parse_optional_decimal(get(obj, :target, nothing)),
         String(get(obj, :updated_at, "")),
@@ -332,11 +326,9 @@ struct InstitutionRatingDetailEvaluateItem
     no_opinion::Int
     under::Int
 end
-StructTypes.StructType(::Type{InstitutionRatingDetailEvaluateItem}) =
-    StructTypes.CustomStruct()
-function StructTypes.construct(
+function construct(
     ::Type{InstitutionRatingDetailEvaluateItem},
-    obj::JSON3.Object,
+    obj::JSONObject,
 )
     InstitutionRatingDetailEvaluateItem(
         Int(get(obj, :buy, 0)),
@@ -352,10 +344,9 @@ end
 struct InstitutionRatingDetailEvaluate
     list::Vector{InstitutionRatingDetailEvaluateItem}
 end
-StructTypes.StructType(::Type{InstitutionRatingDetailEvaluate}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingDetailEvaluate}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingDetailEvaluate}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(InstitutionRatingDetailEvaluateItem, x) for x in obj.list]
+        [construct(InstitutionRatingDetailEvaluateItem, x) for x in obj.list]
     else
         InstitutionRatingDetailEvaluateItem[]
     end
@@ -371,9 +362,7 @@ struct InstitutionRatingDetailTargetItem
     price::Union{Dec64,Nothing}
     timestamp::String
 end
-StructTypes.StructType(::Type{InstitutionRatingDetailTargetItem}) =
-    StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingDetailTargetItem}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingDetailTargetItem}, obj::JSONObject)
     InstitutionRatingDetailTargetItem(
         _parse_optional_decimal(get(obj, :avg_target, nothing)),
         String(get(obj, :date, "")),
@@ -391,10 +380,9 @@ struct InstitutionRatingDetailTarget
     updated_at::String
     list::Vector{InstitutionRatingDetailTargetItem}
 end
-StructTypes.StructType(::Type{InstitutionRatingDetailTarget}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingDetailTarget}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingDetailTarget}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(InstitutionRatingDetailTargetItem, x) for x in obj.list]
+        [construct(InstitutionRatingDetailTargetItem, x) for x in obj.list]
     else
         InstitutionRatingDetailTargetItem[]
     end
@@ -414,12 +402,11 @@ struct InstitutionRatingDetail
     evaluate::InstitutionRatingDetailEvaluate
     target::InstitutionRatingDetailTarget
 end
-StructTypes.StructType(::Type{InstitutionRatingDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingDetail}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingDetail}, obj::JSONObject)
     InstitutionRatingDetail(
         String(get(obj, :ccy_symbol, "")),
-        StructTypes.construct(InstitutionRatingDetailEvaluate, obj.evaluate),
-        StructTypes.construct(InstitutionRatingDetailTarget, obj.target),
+        construct(InstitutionRatingDetailEvaluate, obj.evaluate),
+        construct(InstitutionRatingDetailTarget, obj.target),
     )
 end
 
@@ -433,8 +420,7 @@ struct DividendItem
     ex_date::String
     payment_date::String
 end
-StructTypes.StructType(::Type{DividendItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DividendItem}, obj::JSON3.Object)
+function construct(::Type{DividendItem}, obj::JSONObject)
     DividendItem(
         counter_id_to_symbol(String(get(obj, :counter_id, ""))),
         String(get(obj, :id, "")),
@@ -448,10 +434,9 @@ end
 struct DividendList
     list::Vector{DividendItem}
 end
-StructTypes.StructType(::Type{DividendList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{DividendList}, obj::JSON3.Object)
+function construct(::Type{DividendList}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(DividendItem, x) for x in obj.list]
+        [construct(DividendItem, x) for x in obj.list]
     else
         DividendItem[]
     end
@@ -471,8 +456,7 @@ struct ForecastEpsItem
     forecast_start_date::DateTime    # API 返回 unix 时间戳
     forecast_end_date::DateTime
 end
-StructTypes.StructType(::Type{ForecastEpsItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ForecastEpsItem}, obj::JSON3.Object)
+function construct(::Type{ForecastEpsItem}, obj::JSONObject)
     ForecastEpsItem(
         _parse_optional_decimal(get(obj, :forecast_eps_median, nothing)),
         _parse_optional_decimal(get(obj, :forecast_eps_mean, nothing)),
@@ -495,10 +479,9 @@ end
 struct ForecastEps
     items::Vector{ForecastEpsItem}
 end
-StructTypes.StructType(::Type{ForecastEps}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ForecastEps}, obj::JSON3.Object)
+function construct(::Type{ForecastEps}, obj::JSONObject)
     items = if haskey(obj, :items) && !isnothing(obj.items)
-        [StructTypes.construct(ForecastEpsItem, x) for x in obj.items]
+        [construct(ForecastEpsItem, x) for x in obj.items]
     else
         ForecastEpsItem[]
     end
@@ -518,8 +501,7 @@ struct ConsensusDetail
     comp::String
     is_released::Bool
 end
-StructTypes.StructType(::Type{ConsensusDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ConsensusDetail}, obj::JSON3.Object)
+function construct(::Type{ConsensusDetail}, obj::JSONObject)
     ConsensusDetail(
         String(get(obj, :key, "")),
         String(get(obj, :name, "")),
@@ -539,10 +521,9 @@ struct ConsensusReport
     period_text::String
     details::Vector{ConsensusDetail}
 end
-StructTypes.StructType(::Type{ConsensusReport}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ConsensusReport}, obj::JSON3.Object)
+function construct(::Type{ConsensusReport}, obj::JSONObject)
     details = if haskey(obj, :details) && !isnothing(obj.details)
-        [StructTypes.construct(ConsensusDetail, x) for x in obj.details]
+        [construct(ConsensusDetail, x) for x in obj.details]
     else
         ConsensusDetail[]
     end
@@ -561,10 +542,9 @@ struct FinancialConsensus
     opt_periods::Vector{String}
     current_period::String
 end
-StructTypes.StructType(::Type{FinancialConsensus}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FinancialConsensus}, obj::JSON3.Object)
+function construct(::Type{FinancialConsensus}, obj::JSONObject)
     reports = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(ConsensusReport, x) for x in obj.list]
+        [construct(ConsensusReport, x) for x in obj.list]
     else
         ConsensusReport[]
     end
@@ -588,8 +568,7 @@ struct ValuationPoint
     timestamp::DateTime
     value::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{ValuationPoint}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationPoint}, obj::JSON3.Object)
+function construct(::Type{ValuationPoint}, obj::JSONObject)
     ValuationPoint(
         to_china_time(
             obj.timestamp isa Number ? Int64(obj.timestamp) : String(obj.timestamp),
@@ -605,10 +584,9 @@ struct ValuationMetricData
     median::Union{Dec64,Nothing}
     list::Vector{ValuationPoint}
 end
-StructTypes.StructType(::Type{ValuationMetricData}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationMetricData}, obj::JSON3.Object)
+function construct(::Type{ValuationMetricData}, obj::JSONObject)
     points = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(ValuationPoint, x) for x in obj.list]
+        [construct(ValuationPoint, x) for x in obj.list]
     else
         ValuationPoint[]
     end
@@ -622,7 +600,7 @@ function StructTypes.construct(::Type{ValuationMetricData}, obj::JSON3.Object)
 end
 
 _opt_metric(v::Nothing) = nothing
-_opt_metric(v) = StructTypes.construct(ValuationMetricData, v)
+_opt_metric(v) = construct(ValuationMetricData, v)
 
 struct ValuationMetricsData
     pe::Union{ValuationMetricData,Nothing}
@@ -630,8 +608,7 @@ struct ValuationMetricsData
     ps::Union{ValuationMetricData,Nothing}
     dvd_yld::Union{ValuationMetricData,Nothing}
 end
-StructTypes.StructType(::Type{ValuationMetricsData}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationMetricsData}, obj::JSON3.Object)
+function construct(::Type{ValuationMetricsData}, obj::JSONObject)
     ValuationMetricsData(
         _opt_metric(get(obj, :pe, nothing)),
         _opt_metric(get(obj, :pb, nothing)),
@@ -643,9 +620,8 @@ end
 struct ValuationData
     metrics::ValuationMetricsData
 end
-StructTypes.StructType(::Type{ValuationData}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ValuationData}, obj::JSON3.Object) =
-    ValuationData(StructTypes.construct(ValuationMetricsData, obj.metrics))
+construct(::Type{ValuationData}, obj::JSONObject) =
+    ValuationData(construct(ValuationMetricsData, obj.metrics))
 
 # ── valuation_history ──────────────────────────────────────────────
 
@@ -656,10 +632,9 @@ struct ValuationHistoryMetric
     median::Union{Dec64,Nothing}
     list::Vector{ValuationPoint}
 end
-StructTypes.StructType(::Type{ValuationHistoryMetric}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationHistoryMetric}, obj::JSON3.Object)
+function construct(::Type{ValuationHistoryMetric}, obj::JSONObject)
     points = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(ValuationPoint, x) for x in obj.list]
+        [construct(ValuationPoint, x) for x in obj.list]
     else
         ValuationPoint[]
     end
@@ -673,15 +648,14 @@ function StructTypes.construct(::Type{ValuationHistoryMetric}, obj::JSON3.Object
 end
 
 _opt_hmetric(v::Nothing) = nothing
-_opt_hmetric(v) = StructTypes.construct(ValuationHistoryMetric, v)
+_opt_hmetric(v) = construct(ValuationHistoryMetric, v)
 
 struct ValuationHistoryMetrics
     pe::Union{ValuationHistoryMetric,Nothing}
     pb::Union{ValuationHistoryMetric,Nothing}
     ps::Union{ValuationHistoryMetric,Nothing}
 end
-StructTypes.StructType(::Type{ValuationHistoryMetrics}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationHistoryMetrics}, obj::JSON3.Object)
+function construct(::Type{ValuationHistoryMetrics}, obj::JSONObject)
     ValuationHistoryMetrics(
         _opt_hmetric(get(obj, :pe, nothing)),
         _opt_hmetric(get(obj, :pb, nothing)),
@@ -692,16 +666,14 @@ end
 struct ValuationHistoryData
     metrics::ValuationHistoryMetrics
 end
-StructTypes.StructType(::Type{ValuationHistoryData}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ValuationHistoryData}, obj::JSON3.Object) =
-    ValuationHistoryData(StructTypes.construct(ValuationHistoryMetrics, obj.metrics))
+construct(::Type{ValuationHistoryData}, obj::JSONObject) =
+    ValuationHistoryData(construct(ValuationHistoryMetrics, obj.metrics))
 
 struct ValuationHistoryResponse
     history::ValuationHistoryData
 end
-StructTypes.StructType(::Type{ValuationHistoryResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ValuationHistoryResponse}, obj::JSON3.Object) =
-    ValuationHistoryResponse(StructTypes.construct(ValuationHistoryData, obj.history))
+construct(::Type{ValuationHistoryResponse}, obj::JSONObject) =
+    ValuationHistoryResponse(construct(ValuationHistoryData, obj.history))
 
 # ── industry_valuation ─────────────────────────────────────────────
 
@@ -711,8 +683,7 @@ struct IndustryValuationHistory
     pb::Union{Dec64,Nothing}
     ps::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{IndustryValuationHistory}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryValuationHistory}, obj::JSON3.Object)
+function construct(::Type{IndustryValuationHistory}, obj::JSONObject)
     IndustryValuationHistory(
         String(get(obj, :date, "")),
         _parse_optional_decimal(get(obj, :pe, nothing)),
@@ -735,10 +706,9 @@ struct IndustryValuationItem
     pe::Union{Dec64,Nothing}
     history::Vector{IndustryValuationHistory}
 end
-StructTypes.StructType(::Type{IndustryValuationItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryValuationItem}, obj::JSON3.Object)
+function construct(::Type{IndustryValuationItem}, obj::JSONObject)
     history = if haskey(obj, :history) && !isnothing(obj.history)
-        [StructTypes.construct(IndustryValuationHistory, x) for x in obj.history]
+        [construct(IndustryValuationHistory, x) for x in obj.history]
     else
         IndustryValuationHistory[]
     end
@@ -761,10 +731,9 @@ end
 struct IndustryValuationList
     list::Vector{IndustryValuationItem}
 end
-StructTypes.StructType(::Type{IndustryValuationList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryValuationList}, obj::JSON3.Object)
+function construct(::Type{IndustryValuationList}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(IndustryValuationItem, x) for x in obj.list]
+        [construct(IndustryValuationItem, x) for x in obj.list]
     else
         IndustryValuationItem[]
     end
@@ -782,8 +751,7 @@ struct ValuationDist
     rank_index::String
     rank_total::String
 end
-StructTypes.StructType(::Type{ValuationDist}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationDist}, obj::JSON3.Object)
+function construct(::Type{ValuationDist}, obj::JSONObject)
     ValuationDist(
         _parse_optional_decimal(get(obj, :low, nothing)),
         _parse_optional_decimal(get(obj, :high, nothing)),
@@ -796,15 +764,14 @@ function StructTypes.construct(::Type{ValuationDist}, obj::JSON3.Object)
 end
 
 _opt_dist(v::Nothing) = nothing
-_opt_dist(v) = StructTypes.construct(ValuationDist, v)
+_opt_dist(v) = construct(ValuationDist, v)
 
 struct IndustryValuationDist
     pe::Union{ValuationDist,Nothing}
     pb::Union{ValuationDist,Nothing}
     ps::Union{ValuationDist,Nothing}
 end
-StructTypes.StructType(::Type{IndustryValuationDist}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryValuationDist}, obj::JSON3.Object)
+function construct(::Type{IndustryValuationDist}, obj::JSONObject)
     IndustryValuationDist(
         _opt_dist(get(obj, :pe, nothing)),
         _opt_dist(get(obj, :pb, nothing)),
@@ -848,8 +815,7 @@ struct CompanyOverview
     ads_ratio::String
     sector::Int
 end
-StructTypes.StructType(::Type{CompanyOverview}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CompanyOverview}, obj::JSON3.Object)
+function construct(::Type{CompanyOverview}, obj::JSONObject)
     CompanyOverview(
         String(get(obj, :name, "")),
         String(get(obj, :company_name, "")),
@@ -898,8 +864,7 @@ struct Professional
     photo::String
     wiki_url::String
 end
-StructTypes.StructType(::Type{Professional}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{Professional}, obj::JSON3.Object)
+function construct(::Type{Professional}, obj::JSONObject)
     Professional(
         String(get(obj, :id, "")),
         String(get(obj, :name, "")),
@@ -918,10 +883,9 @@ struct ExecutiveGroup
     total::Int
     professionals::Vector{Professional}
 end
-StructTypes.StructType(::Type{ExecutiveGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ExecutiveGroup}, obj::JSON3.Object)
+function construct(::Type{ExecutiveGroup}, obj::JSONObject)
     pros = if haskey(obj, :professionals) && !isnothing(obj.professionals)
-        [StructTypes.construct(Professional, x) for x in obj.professionals]
+        [construct(Professional, x) for x in obj.professionals]
     else
         Professional[]
     end
@@ -936,10 +900,9 @@ end
 struct ExecutiveList
     professional_list::Vector{ExecutiveGroup}
 end
-StructTypes.StructType(::Type{ExecutiveList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ExecutiveList}, obj::JSON3.Object)
+function construct(::Type{ExecutiveList}, obj::JSONObject)
     groups = if haskey(obj, :professional_list) && !isnothing(obj.professional_list)
-        [StructTypes.construct(ExecutiveGroup, x) for x in obj.professional_list]
+        [construct(ExecutiveGroup, x) for x in obj.professional_list]
     else
         ExecutiveGroup[]
     end
@@ -954,8 +917,7 @@ struct ShareholderStock
     market::String
     chg::String
 end
-StructTypes.StructType(::Type{ShareholderStock}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShareholderStock}, obj::JSON3.Object)
+function construct(::Type{ShareholderStock}, obj::JSONObject)
     ShareholderStock(
         counter_id_to_symbol(String(get(obj, :counter_id, ""))),
         String(get(obj, :code, "")),
@@ -973,10 +935,9 @@ struct Shareholder
     report_date::String
     stocks::Vector{ShareholderStock}
 end
-StructTypes.StructType(::Type{Shareholder}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{Shareholder}, obj::JSON3.Object)
+function construct(::Type{Shareholder}, obj::JSONObject)
     stocks = if haskey(obj, :stocks) && !isnothing(obj.stocks)
-        [StructTypes.construct(ShareholderStock, x) for x in obj.stocks]
+        [construct(ShareholderStock, x) for x in obj.stocks]
     else
         ShareholderStock[]
     end
@@ -996,10 +957,9 @@ struct ShareholderList
     forward_url::String
     total::Int
 end
-StructTypes.StructType(::Type{ShareholderList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShareholderList}, obj::JSON3.Object)
+function construct(::Type{ShareholderList}, obj::JSONObject)
     list = if haskey(obj, :shareholder_list) && !isnothing(obj.shareholder_list)
-        [StructTypes.construct(Shareholder, x) for x in obj.shareholder_list]
+        [construct(Shareholder, x) for x in obj.shareholder_list]
     else
         Shareholder[]
     end
@@ -1020,8 +980,7 @@ struct FundHolder
     position_ratio::Dec64
     report_date::String
 end
-StructTypes.StructType(::Type{FundHolder}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FundHolder}, obj::JSON3.Object)
+function construct(::Type{FundHolder}, obj::JSONObject)
     # position_ratio uses decimal_empty_is_0 in upstream; tolerate "--" placeholder.
     pr_raw = get(obj, :position_ratio, "")
     pr = if isnothing(pr_raw) || (pr_raw isa AbstractString && isempty(pr_raw))
@@ -1048,10 +1007,9 @@ end
 struct FundHolders
     lists::Vector{FundHolder}
 end
-StructTypes.StructType(::Type{FundHolders}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FundHolders}, obj::JSON3.Object)
+function construct(::Type{FundHolders}, obj::JSONObject)
     items = if haskey(obj, :lists) && !isnothing(obj.lists)
-        [StructTypes.construct(FundHolder, x) for x in obj.lists]
+        [construct(FundHolder, x) for x in obj.lists]
     else
         FundHolder[]
     end
@@ -1067,8 +1025,7 @@ struct CorpActionLive
     name::String
     icon::String
 end
-StructTypes.StructType(::Type{CorpActionLive}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CorpActionLive}, obj::JSON3.Object)
+function construct(::Type{CorpActionLive}, obj::JSONObject)
     CorpActionLive(
         String(get(obj, :id, "")),
         get(obj, :status, nothing),
@@ -1079,7 +1036,7 @@ function StructTypes.construct(::Type{CorpActionLive}, obj::JSON3.Object)
 end
 
 _opt_live(::Nothing) = nothing
-_opt_live(v) = StructTypes.construct(CorpActionLive, v)
+_opt_live(v) = construct(CorpActionLive, v)
 
 struct CorpActionItem
     id::String
@@ -1096,8 +1053,7 @@ struct CorpActionItem
     live::Union{CorpActionLive,Nothing}
     security::Any              # 通常为 null，保留原值
 end
-StructTypes.StructType(::Type{CorpActionItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CorpActionItem}, obj::JSON3.Object)
+function construct(::Type{CorpActionItem}, obj::JSONObject)
     CorpActionItem(
         String(get(obj, :id, "")),
         String(get(obj, :date, "")),
@@ -1118,10 +1074,9 @@ end
 struct CorpActions
     items::Vector{CorpActionItem}
 end
-StructTypes.StructType(::Type{CorpActions}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CorpActions}, obj::JSON3.Object)
+function construct(::Type{CorpActions}, obj::JSONObject)
     items = if haskey(obj, :items) && !isnothing(obj.items)
-        [StructTypes.construct(CorpActionItem, x) for x in obj.items]
+        [construct(CorpActionItem, x) for x in obj.items]
     else
         CorpActionItem[]
     end
@@ -1141,8 +1096,7 @@ struct InvestSecurity
     shares_rank::String
     shares_value::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{InvestSecurity}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InvestSecurity}, obj::JSON3.Object)
+function construct(::Type{InvestSecurity}, obj::JSONObject)
     InvestSecurity(
         String(get(obj, :company_id, "")),
         String(get(obj, :company_name, "")),
@@ -1160,10 +1114,9 @@ struct InvestRelations
     forward_url::String
     invest_securities::Vector{InvestSecurity}
 end
-StructTypes.StructType(::Type{InvestRelations}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InvestRelations}, obj::JSON3.Object)
+function construct(::Type{InvestRelations}, obj::JSONObject)
     sec = if haskey(obj, :invest_securities) && !isnothing(obj.invest_securities)
-        [StructTypes.construct(InvestSecurity, x) for x in obj.invest_securities]
+        [construct(InvestSecurity, x) for x in obj.invest_securities]
     else
         InvestSecurity[]
     end
@@ -1178,8 +1131,7 @@ struct OperatingIndicator
     indicator_value::String
     yoy::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{OperatingIndicator}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OperatingIndicator}, obj::JSON3.Object)
+function construct(::Type{OperatingIndicator}, obj::JSONObject)
     OperatingIndicator(
         String(get(obj, :field_name, "")),
         String(get(obj, :indicator_name, "")),
@@ -1198,10 +1150,9 @@ struct OperatingFinancial
     report_txt::String
     indicators::Vector{OperatingIndicator}
 end
-StructTypes.StructType(::Type{OperatingFinancial}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OperatingFinancial}, obj::JSON3.Object)
+function construct(::Type{OperatingFinancial}, obj::JSONObject)
     inds = if haskey(obj, :indicators) && !isnothing(obj.indicators)
-        [StructTypes.construct(OperatingIndicator, x) for x in obj.indicators]
+        [construct(OperatingIndicator, x) for x in obj.indicators]
     else
         OperatingIndicator[]
     end
@@ -1227,8 +1178,7 @@ struct OperatingItem
     web_url::String
     financial::OperatingFinancial
 end
-StructTypes.StructType(::Type{OperatingItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OperatingItem}, obj::JSON3.Object)
+function construct(::Type{OperatingItem}, obj::JSONObject)
     kws = if haskey(obj, :keywords) && !isnothing(obj.keywords)
         String[String(k) for k in obj.keywords if !isnothing(k)]
     else
@@ -1242,17 +1192,16 @@ function StructTypes.construct(::Type{OperatingItem}, obj::JSON3.Object)
         Bool(get(obj, :latest, false)),
         kws,
         String(get(obj, :web_url, "")),
-        StructTypes.construct(OperatingFinancial, obj.financial),
+        construct(OperatingFinancial, obj.financial),
     )
 end
 
 struct OperatingList
     list::Vector{OperatingItem}
 end
-StructTypes.StructType(::Type{OperatingList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OperatingList}, obj::JSON3.Object)
+function construct(::Type{OperatingList}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(OperatingItem, x) for x in obj.list]
+        [construct(OperatingItem, x) for x in obj.list]
     else
         OperatingItem[]
     end
@@ -1266,8 +1215,7 @@ struct RecentBuybacks
     net_buyback_ttm::Union{Dec64,Nothing}
     net_buyback_yield_ttm::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{RecentBuybacks}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RecentBuybacks}, obj::JSON3.Object)
+function construct(::Type{RecentBuybacks}, obj::JSONObject)
     RecentBuybacks(
         String(get(obj, :currency, "")),
         _parse_optional_decimal(get(obj, :net_buyback_ttm, nothing)),
@@ -1276,7 +1224,7 @@ function StructTypes.construct(::Type{RecentBuybacks}, obj::JSON3.Object)
 end
 
 _opt_recent(::Nothing) = nothing
-_opt_recent(v) = StructTypes.construct(RecentBuybacks, v)
+_opt_recent(v) = construct(RecentBuybacks, v)
 
 struct BuybackHistoryItem
     fiscal_year::String
@@ -1286,8 +1234,7 @@ struct BuybackHistoryItem
     net_buyback_growth_rate::Union{Dec64,Nothing}
     currency::String
 end
-StructTypes.StructType(::Type{BuybackHistoryItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BuybackHistoryItem}, obj::JSON3.Object)
+function construct(::Type{BuybackHistoryItem}, obj::JSONObject)
     BuybackHistoryItem(
         String(get(obj, :fiscal_year, "")),
         String(get(obj, :fiscal_year_range, "")),
@@ -1302,8 +1249,7 @@ struct BuybackRatios
     net_buyback_payout_ratio::Union{Dec64,Nothing}
     net_buyback_to_cashflow_ratio::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{BuybackRatios}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BuybackRatios}, obj::JSON3.Object)
+function construct(::Type{BuybackRatios}, obj::JSONObject)
     BuybackRatios(
         _parse_optional_decimal(get(obj, :net_buyback_payout_ratio, nothing)),
         _parse_optional_decimal(get(obj, :net_buyback_to_cashflow_ratio, nothing)),
@@ -1315,15 +1261,14 @@ struct BuybackData
     buyback_history::Vector{BuybackHistoryItem}
     buyback_ratios::Vector{BuybackRatios}
 end
-StructTypes.StructType(::Type{BuybackData}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BuybackData}, obj::JSON3.Object)
+function construct(::Type{BuybackData}, obj::JSONObject)
     history = if haskey(obj, :buyback_history) && !isnothing(obj.buyback_history)
-        [StructTypes.construct(BuybackHistoryItem, x) for x in obj.buyback_history]
+        [construct(BuybackHistoryItem, x) for x in obj.buyback_history]
     else
         BuybackHistoryItem[]
     end
     ratios = if haskey(obj, :buyback_ratios) && !isnothing(obj.buyback_ratios)
-        [StructTypes.construct(BuybackRatios, x) for x in obj.buyback_ratios]
+        [construct(BuybackRatios, x) for x in obj.buyback_ratios]
     else
         BuybackRatios[]
     end
@@ -1339,8 +1284,7 @@ struct RatingLeafIndicator
     score::MaybeNumber         # API 可能返回 int / float / null
     letter::String
 end
-StructTypes.StructType(::Type{RatingLeafIndicator}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingLeafIndicator}, obj::JSON3.Object)
+function construct(::Type{RatingLeafIndicator}, obj::JSONObject)
     RatingLeafIndicator(
         String(get(obj, :name, "")),
         String(get(obj, :value, "")),
@@ -1355,8 +1299,7 @@ struct RatingIndicator
     score::MaybeNumber
     letter::String
 end
-StructTypes.StructType(::Type{RatingIndicator}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingIndicator}, obj::JSON3.Object)
+function construct(::Type{RatingIndicator}, obj::JSONObject)
     RatingIndicator(
         String(get(obj, :name, "")),
         _maybe_number(get(obj, :score, nothing)),
@@ -1368,24 +1311,22 @@ struct RatingSubIndicatorGroup
     indicator::RatingIndicator
     sub_indicators::Vector{RatingLeafIndicator}
 end
-StructTypes.StructType(::Type{RatingSubIndicatorGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingSubIndicatorGroup}, obj::JSON3.Object)
+function construct(::Type{RatingSubIndicatorGroup}, obj::JSONObject)
     subs = if haskey(obj, :sub_indicators) && !isnothing(obj.sub_indicators)
-        [StructTypes.construct(RatingLeafIndicator, x) for x in obj.sub_indicators]
+        [construct(RatingLeafIndicator, x) for x in obj.sub_indicators]
     else
         RatingLeafIndicator[]
     end
-    RatingSubIndicatorGroup(StructTypes.construct(RatingIndicator, obj.indicator), subs)
+    RatingSubIndicatorGroup(construct(RatingIndicator, obj.indicator), subs)
 end
 
 struct RatingCategory
     kind::Int
     sub_indicators::Vector{RatingSubIndicatorGroup}
 end
-StructTypes.StructType(::Type{RatingCategory}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RatingCategory}, obj::JSON3.Object)
+function construct(::Type{RatingCategory}, obj::JSONObject)
     groups = if haskey(obj, :sub_indicators) && !isnothing(obj.sub_indicators)
-        [StructTypes.construct(RatingSubIndicatorGroup, x) for x in obj.sub_indicators]
+        [construct(RatingSubIndicatorGroup, x) for x in obj.sub_indicators]
     else
         RatingSubIndicatorGroup[]
     end
@@ -1406,10 +1347,9 @@ struct StockRatings
     industry_median_score::MaybeNumber
     ratings::Vector{RatingCategory}
 end
-StructTypes.StructType(::Type{StockRatings}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{StockRatings}, obj::JSON3.Object)
+function construct(::Type{StockRatings}, obj::JSONObject)
     cats = if haskey(obj, :ratings) && !isnothing(obj.ratings)
-        [StructTypes.construct(RatingCategory, x) for x in obj.ratings]
+        [construct(RatingCategory, x) for x in obj.ratings]
     else
         RatingCategory[]
     end
@@ -1439,8 +1379,7 @@ struct BusinessSegmentItem
     name::String
     percent::String
 end
-StructTypes.StructType(::Type{BusinessSegmentItem}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{BusinessSegmentItem}, obj::JSON3.Object) =
+construct(::Type{BusinessSegmentItem}, obj::JSONObject) =
     BusinessSegmentItem(String(get(obj, :name, "")), String(get(obj, :percent, "")))
 
 struct BusinessSegments
@@ -1449,10 +1388,9 @@ struct BusinessSegments
     currency::String
     business::Vector{BusinessSegmentItem}
 end
-StructTypes.StructType(::Type{BusinessSegments}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BusinessSegments}, obj::JSON3.Object)
+function construct(::Type{BusinessSegments}, obj::JSONObject)
     items = if haskey(obj, :business) && !isnothing(obj.business)
-        [StructTypes.construct(BusinessSegmentItem, x) for x in obj.business]
+        [construct(BusinessSegmentItem, x) for x in obj.business]
     else
         BusinessSegmentItem[]
     end
@@ -1469,8 +1407,7 @@ struct BusinessSegmentHistoryItem
     percent::String
     value::String
 end
-StructTypes.StructType(::Type{BusinessSegmentHistoryItem}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{BusinessSegmentHistoryItem}, obj::JSON3.Object) =
+construct(::Type{BusinessSegmentHistoryItem}, obj::JSONObject) =
     BusinessSegmentHistoryItem(
         String(get(obj, :name, "")),
         String(get(obj, :percent, "")),
@@ -1484,15 +1421,14 @@ struct BusinessSegmentsHistoricalItem
     business::Vector{BusinessSegmentHistoryItem}
     regionals::Vector{BusinessSegmentHistoryItem}
 end
-StructTypes.StructType(::Type{BusinessSegmentsHistoricalItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BusinessSegmentsHistoricalItem}, obj::JSON3.Object)
+function construct(::Type{BusinessSegmentsHistoricalItem}, obj::JSONObject)
     bs = if haskey(obj, :business) && !isnothing(obj.business)
-        [StructTypes.construct(BusinessSegmentHistoryItem, x) for x in obj.business]
+        [construct(BusinessSegmentHistoryItem, x) for x in obj.business]
     else
         BusinessSegmentHistoryItem[]
     end
     rs = if haskey(obj, :regionals) && !isnothing(obj.regionals)
-        [StructTypes.construct(BusinessSegmentHistoryItem, x) for x in obj.regionals]
+        [construct(BusinessSegmentHistoryItem, x) for x in obj.regionals]
     else
         BusinessSegmentHistoryItem[]
     end
@@ -1508,10 +1444,9 @@ end
 struct BusinessSegmentsHistory
     historical::Vector{BusinessSegmentsHistoricalItem}
 end
-StructTypes.StructType(::Type{BusinessSegmentsHistory}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BusinessSegmentsHistory}, obj::JSON3.Object)
+function construct(::Type{BusinessSegmentsHistory}, obj::JSONObject)
     items = if haskey(obj, :historical) && !isnothing(obj.historical)
-        [StructTypes.construct(BusinessSegmentsHistoricalItem, x) for x in obj.historical]
+        [construct(BusinessSegmentsHistoricalItem, x) for x in obj.historical]
     else
         BusinessSegmentsHistoricalItem[]
     end
@@ -1532,8 +1467,7 @@ struct InstitutionRatingViewItem
     sell::String
     total::String
 end
-StructTypes.StructType(::Type{InstitutionRatingViewItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingViewItem}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingViewItem}, obj::JSONObject)
     d = get(obj, :date, "")
     InstitutionRatingViewItem(
         d isa AbstractString ? String(d) : string(d),
@@ -1549,10 +1483,9 @@ end
 struct InstitutionRatingViews
     elist::Vector{InstitutionRatingViewItem}
 end
-StructTypes.StructType(::Type{InstitutionRatingViews}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{InstitutionRatingViews}, obj::JSON3.Object)
+function construct(::Type{InstitutionRatingViews}, obj::JSONObject)
     items = if haskey(obj, :elist) && !isnothing(obj.elist)
-        [StructTypes.construct(InstitutionRatingViewItem, x) for x in obj.elist]
+        [construct(InstitutionRatingViewItem, x) for x in obj.elist]
     else
         InstitutionRatingViewItem[]
     end
@@ -1571,8 +1504,7 @@ struct IndustryRankItem
     value_name::String
     value_data::String
 end
-StructTypes.StructType(::Type{IndustryRankItem}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{IndustryRankItem}, obj::JSON3.Object) = IndustryRankItem(
+construct(::Type{IndustryRankItem}, obj::JSONObject) = IndustryRankItem(
     String(get(obj, :name, "")),
     String(get(obj, :counter_id, "")),
     String(get(obj, :chg, "")),
@@ -1586,10 +1518,9 @@ StructTypes.construct(::Type{IndustryRankItem}, obj::JSON3.Object) = IndustryRan
 struct IndustryRankGroup
     lists::Vector{IndustryRankItem}
 end
-StructTypes.StructType(::Type{IndustryRankGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryRankGroup}, obj::JSON3.Object)
+function construct(::Type{IndustryRankGroup}, obj::JSONObject)
     items = if haskey(obj, :lists) && !isnothing(obj.lists)
-        [StructTypes.construct(IndustryRankItem, x) for x in obj.lists]
+        [construct(IndustryRankItem, x) for x in obj.lists]
     else
         IndustryRankItem[]
     end
@@ -1599,10 +1530,9 @@ end
 struct IndustryRankResponse
     items::Vector{IndustryRankGroup}
 end
-StructTypes.StructType(::Type{IndustryRankResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryRankResponse}, obj::JSON3.Object)
+function construct(::Type{IndustryRankResponse}, obj::JSONObject)
     groups = if haskey(obj, :items) && !isnothing(obj.items)
-        [StructTypes.construct(IndustryRankGroup, x) for x in obj.items]
+        [construct(IndustryRankGroup, x) for x in obj.items]
     else
         IndustryRankGroup[]
     end
@@ -1615,8 +1545,7 @@ struct IndustryPeersTop
     name::String
     market::String
 end
-StructTypes.StructType(::Type{IndustryPeersTop}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{IndustryPeersTop}, obj::JSON3.Object) =
+construct(::Type{IndustryPeersTop}, obj::JSONObject) =
     IndustryPeersTop(String(get(obj, :name, "")), String(get(obj, :market, "")))
 
 """
@@ -1630,10 +1559,9 @@ struct IndustryPeerNode
     ytd_chg::String
     next::Vector{IndustryPeerNode}
 end
-StructTypes.StructType(::Type{IndustryPeerNode}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryPeerNode}, obj::JSON3.Object)
+function construct(::Type{IndustryPeerNode}, obj::JSONObject)
     children = if haskey(obj, :next) && !isnothing(obj.next)
-        [StructTypes.construct(IndustryPeerNode, x) for x in obj.next]
+        [construct(IndustryPeerNode, x) for x in obj.next]
     else
         IndustryPeerNode[]
     end
@@ -1651,15 +1579,14 @@ struct IndustryPeersResponse
     top::IndustryPeersTop
     chain::Union{IndustryPeerNode,Nothing}
 end
-StructTypes.StructType(::Type{IndustryPeersResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndustryPeersResponse}, obj::JSON3.Object)
+function construct(::Type{IndustryPeersResponse}, obj::JSONObject)
     top_obj = get(obj, :top, nothing)
     top =
         top_obj === nothing ? IndustryPeersTop("", "") :
-        StructTypes.construct(IndustryPeersTop, top_obj)
+        construct(IndustryPeersTop, top_obj)
     chain_obj = get(obj, :chain, nothing)
     chain =
-        chain_obj === nothing ? nothing : StructTypes.construct(IndustryPeerNode, chain_obj)
+        chain_obj === nothing ? nothing : construct(IndustryPeerNode, chain_obj)
     IndustryPeersResponse(top, chain)
 end
 
@@ -1671,8 +1598,7 @@ struct SnapshotForecastMetric
     cmp_desc::String
     est_value::String
 end
-StructTypes.StructType(::Type{SnapshotForecastMetric}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{SnapshotForecastMetric}, obj::JSON3.Object) =
+construct(::Type{SnapshotForecastMetric}, obj::JSONObject) =
     SnapshotForecastMetric(
         String(get(obj, :value, "")),
         String(get(obj, :yoy, "")),
@@ -1684,8 +1610,7 @@ struct SnapshotReportedMetric
     value::String
     yoy::String
 end
-StructTypes.StructType(::Type{SnapshotReportedMetric}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{SnapshotReportedMetric}, obj::JSON3.Object) =
+construct(::Type{SnapshotReportedMetric}, obj::JSONObject) =
     SnapshotReportedMetric(String(get(obj, :value, "")), String(get(obj, :yoy, "")))
 
 struct FinancialReportSnapshot
@@ -1712,15 +1637,14 @@ struct FinancialReportSnapshot
     fr_leverage_ttm::String
     fr_debt_assets_ratio::String
 end
-StructTypes.StructType(::Type{FinancialReportSnapshot}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FinancialReportSnapshot}, obj::JSON3.Object)
+function construct(::Type{FinancialReportSnapshot}, obj::JSONObject)
     _opt_f(k) =
         let v = get(obj, k, nothing)
-            v === nothing ? nothing : StructTypes.construct(SnapshotForecastMetric, v)
+            v === nothing ? nothing : construct(SnapshotForecastMetric, v)
         end
     _opt_r(k) =
         let v = get(obj, k, nothing)
-            v === nothing ? nothing : StructTypes.construct(SnapshotReportedMetric, v)
+            v === nothing ? nothing : construct(SnapshotReportedMetric, v)
         end
     FinancialReportSnapshot(
         String(get(obj, :name, "")),
@@ -1751,13 +1675,12 @@ end
 # ── shareholder_top / shareholder_detail (raw JSON) ────────────────
 
 """
-`shareholder_top` 的原始 JSON 响应包装。结构因品种而变，保留原 `JSON3.Object`。
+`shareholder_top` 的原始 JSON 响应包装。结构因品种而变，保留原 `JSONObject`。
 """
 struct ShareholderTopResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ShareholderTopResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ShareholderTopResponse}, obj) = ShareholderTopResponse(obj)
+construct(::Type{ShareholderTopResponse}, obj) = ShareholderTopResponse(obj)
 
 """
 `shareholder_detail` 的原始 JSON 响应包装。
@@ -1765,8 +1688,7 @@ StructTypes.construct(::Type{ShareholderTopResponse}, obj) = ShareholderTopRespo
 struct ShareholderDetailResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ShareholderDetailResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ShareholderDetailResponse}, obj) =
+construct(::Type{ShareholderDetailResponse}, obj) =
     ShareholderDetailResponse(obj)
 
 # ── valuation_comparison ───────────────────────────────────────────
@@ -1780,8 +1702,7 @@ struct ValuationHistoryPoint
     pb::String
     ps::String
 end
-StructTypes.StructType(::Type{ValuationHistoryPoint}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationHistoryPoint}, obj::JSON3.Object)
+function construct(::Type{ValuationHistoryPoint}, obj::JSONObject)
     ts_raw = get(obj, :date, 0)
     ts_int = ts_raw isa AbstractString ? parse(Int64, ts_raw) : Int64(ts_raw)
     ValuationHistoryPoint(
@@ -1812,10 +1733,9 @@ struct ValuationComparisonItem
     assets::String
     history::Vector{ValuationHistoryPoint}
 end
-StructTypes.StructType(::Type{ValuationComparisonItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationComparisonItem}, obj::JSON3.Object)
+function construct(::Type{ValuationComparisonItem}, obj::JSONObject)
     hist = if haskey(obj, :history) && !isnothing(obj.history)
-        [StructTypes.construct(ValuationHistoryPoint, x) for x in obj.history]
+        [construct(ValuationHistoryPoint, x) for x in obj.history]
     else
         ValuationHistoryPoint[]
     end
@@ -1841,10 +1761,9 @@ end
 struct ValuationComparisonResponse
     list::Vector{ValuationComparisonItem}
 end
-StructTypes.StructType(::Type{ValuationComparisonResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ValuationComparisonResponse}, obj::JSON3.Object)
+function construct(::Type{ValuationComparisonResponse}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(ValuationComparisonItem, x) for x in obj.list]
+        [construct(ValuationComparisonItem, x) for x in obj.list]
     else
         ValuationComparisonItem[]
     end
@@ -1864,8 +1783,7 @@ struct HoldingDetail
     holding_type::String
     holding_type_name::String
 end
-StructTypes.StructType(::Type{HoldingDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{HoldingDetail}, obj::JSON3.Object)
+function construct(::Type{HoldingDetail}, obj::JSONObject)
     HoldingDetail(
         String(get(obj, :industry_id, "")),
         String(get(obj, :industry_name, "")),
@@ -1877,11 +1795,11 @@ function StructTypes.construct(::Type{HoldingDetail}, obj::JSON3.Object)
 end
 
 _opt_holding_detail(::Nothing) = nothing
-_opt_holding_detail(v) = StructTypes.construct(HoldingDetail, v)
+_opt_holding_detail(v) = construct(HoldingDetail, v)
 
 function _string_map(v)
     d = Dict{String,String}()
-    if v isa JSON3.Object
+    if v isa JSONObject
         for (k, val) in pairs(v)
             d[String(k)] = isnothing(val) ? "" : String(val)
         end
@@ -1900,8 +1818,7 @@ struct AssetAllocationItem
     name_locales::Dict{String,String}
     holding_detail::Union{HoldingDetail,Nothing}
 end
-StructTypes.StructType(::Type{AssetAllocationItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AssetAllocationItem}, obj::JSON3.Object)
+function construct(::Type{AssetAllocationItem}, obj::JSONObject)
     AssetAllocationItem(
         String(get(obj, :name, "")),
         String(get(obj, :code, "")),
@@ -1920,10 +1837,9 @@ struct AssetAllocationGroup
     asset_type::ElementType.T
     lists::Vector{AssetAllocationItem}
 end
-StructTypes.StructType(::Type{AssetAllocationGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AssetAllocationGroup}, obj::JSON3.Object)
+function construct(::Type{AssetAllocationGroup}, obj::JSONObject)
     items = if haskey(obj, :lists) && !isnothing(obj.lists)
-        [StructTypes.construct(AssetAllocationItem, x) for x in obj.lists]
+        [construct(AssetAllocationItem, x) for x in obj.lists]
     else
         AssetAllocationItem[]
     end
@@ -1940,10 +1856,9 @@ ETF 资产配置响应。`info` 按元素类型分组。
 struct AssetAllocationResponse
     info::Vector{AssetAllocationGroup}
 end
-StructTypes.StructType(::Type{AssetAllocationResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AssetAllocationResponse}, obj::JSON3.Object)
+function construct(::Type{AssetAllocationResponse}, obj::JSONObject)
     groups = if haskey(obj, :info) && !isnothing(obj.info)
-        [StructTypes.construct(AssetAllocationGroup, x) for x in obj.info]
+        [construct(AssetAllocationGroup, x) for x in obj.info]
     else
         AssetAllocationGroup[]
     end
@@ -2011,7 +1926,7 @@ _int_or_zero(v) = Int(round(something(_maybe_number(v), 0)))
 function _macro_text(v)::String
     isnothing(v) && return ""
     v isa AbstractString && return String(v)
-    if v isa JSON3.Object
+    if v isa JSONObject
         for key in (:english, :simplified_chinese, :traditional_chinese)
             text = get(v, key, nothing)
             text isa AbstractString && !isempty(text) && return String(text)
@@ -2021,21 +1936,21 @@ function _macro_text(v)::String
     string(v)
 end
 
-function _macro_indicator_code(obj::JSON3.Object)::String
+function _macro_indicator_code(obj::JSONObject)::String
     for key in (:indicator_code, :id, :indicator_id, :macro_id, :macrodata_id, :code)
         haskey(obj, key) && return _macro_text(get(obj, key, nothing))
     end
     ""
 end
 
-function _macro_text_field(obj::JSON3.Object, keys::Tuple)::String
+function _macro_text_field(obj::JSONObject, keys::Tuple)::String
     for key in keys
         haskey(obj, key) && return _macro_text(get(obj, key, nothing))
     end
     ""
 end
 
-function _macro_time_field(obj::JSON3.Object, keys::Tuple)::Union{DateTime,Nothing}
+function _macro_time_field(obj::JSONObject, keys::Tuple)::Union{DateTime,Nothing}
     for key in keys
         haskey(obj, key) && return _rfc3339_opt(get(obj, key, nothing))
     end
@@ -2060,8 +1975,7 @@ struct MacroeconomicIndicator
 end
 MacroeconomicIndicator() =
     MacroeconomicIndicator("", "", "", "", "", "", "", "", 0, nothing)
-StructTypes.StructType(::Type{MacroeconomicIndicator}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{MacroeconomicIndicator}, obj::JSON3.Object)
+function construct(::Type{MacroeconomicIndicator}, obj::JSONObject)
     MacroeconomicIndicator(
         _macro_indicator_code(obj),
         _macro_text_field(obj, (:source_org, :source_org_name, :source, :source_name)),
@@ -2083,10 +1997,8 @@ struct MacroeconomicIndicatorListResponse
     data::Vector{MacroeconomicIndicator}
     count::Int
 end
-StructTypes.StructType(::Type{MacroeconomicIndicatorListResponse}) =
-    StructTypes.CustomStruct()
 
-function _looks_like_macro_indicator(obj::JSON3.Object)::Bool
+function _looks_like_macro_indicator(obj::JSONObject)::Bool
     haskey(obj, :indicator_code) ||
         haskey(obj, :id) ||
         haskey(obj, :indicator_id) ||
@@ -2102,8 +2014,8 @@ function _macro_indicator_items(raw)::Vector{MacroeconomicIndicator}
     items = MacroeconomicIndicator[]
     try
         for x in raw
-            if x isa JSON3.Object && _looks_like_macro_indicator(x)
-                push!(items, StructTypes.construct(MacroeconomicIndicator, x))
+            if x isa JSONObject && _looks_like_macro_indicator(x)
+                push!(items, construct(MacroeconomicIndicator, x))
             end
         end
     catch
@@ -2112,7 +2024,7 @@ function _macro_indicator_items(raw)::Vector{MacroeconomicIndicator}
     items
 end
 
-function _macro_response_count(obj::JSON3.Object, fallback::Integer)::Int
+function _macro_response_count(obj::JSONObject, fallback::Integer)::Int
     for key in (:count, :total_count, :total)
         value = get(obj, key, nothing)
         isnothing(value) || return _int_or_zero(value)
@@ -2120,14 +2032,14 @@ function _macro_response_count(obj::JSON3.Object, fallback::Integer)::Int
     Int(fallback)
 end
 
-function _macro_indicator_items_from_response(obj::JSON3.Object)::Vector{MacroeconomicIndicator}
+function _macro_indicator_items_from_response(obj::JSONObject)::Vector{MacroeconomicIndicator}
     for key in (:list, :indicator_list, :data, :items, :indicators, :results, :rows)
         items = _macro_indicator_items(get(obj, key, nothing))
         isempty(items) || return items
     end
 
     result = get(obj, :result, nothing)
-    if result isa JSON3.Object
+    if result isa JSONObject
         for key in (:list, :indicator_list, :data, :items, :indicators, :results, :rows)
             items = _macro_indicator_items(get(result, key, nothing))
             isempty(items) || return items
@@ -2136,17 +2048,17 @@ function _macro_indicator_items_from_response(obj::JSON3.Object)::Vector{Macroec
     MacroeconomicIndicator[]
 end
 
-function StructTypes.construct(
+function construct(
     ::Type{MacroeconomicIndicatorListResponse},
-    obj::JSON3.Object,
+    obj::JSONObject,
 )
     items = _macro_indicator_items_from_response(obj)
     MacroeconomicIndicatorListResponse(items, _macro_response_count(obj, length(items)))
 end
 
-function StructTypes.construct(
+function construct(
     ::Type{MacroeconomicIndicatorListResponse},
-    obj::JSON3.Array,
+    obj::AbstractVector,
 )
     items = _macro_indicator_items(obj)
     MacroeconomicIndicatorListResponse(items, length(items))
@@ -2166,8 +2078,7 @@ struct Macroeconomic
     unit::String
     unit_prefix::String
 end
-StructTypes.StructType(::Type{Macroeconomic}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{Macroeconomic}, obj::JSON3.Object)
+function construct(::Type{Macroeconomic}, obj::JSONObject)
     Macroeconomic(
         _macro_text_field(obj, (:period, :observation_date)),
         _rfc3339_opt(get(obj, :release_at, get(obj, :published_time, nothing))),
@@ -2205,27 +2116,26 @@ struct MacroeconomicResponse
     data::Vector{Macroeconomic}
     count::Int
 end
-StructTypes.StructType(::Type{MacroeconomicResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{MacroeconomicResponse}, obj::JSON3.Object)
+function construct(::Type{MacroeconomicResponse}, obj::JSONObject)
     indicator_raw = get(obj, :indicator, nothing)
-    if indicator_raw isa JSON3.Object
-        info = StructTypes.construct(MacroeconomicIndicator, indicator_raw)
+    if indicator_raw isa JSONObject
+        info = construct(MacroeconomicIndicator, indicator_raw)
         unit = _macro_text(get(indicator_raw, :unit, nothing))
         data_raw = get(indicator_raw, :indicator_data, nothing)
         items = if isnothing(data_raw)
             Macroeconomic[]
         else
-            [_macro_with_default_unit(StructTypes.construct(Macroeconomic, x), unit) for x in data_raw]
+            [_macro_with_default_unit(construct(Macroeconomic, x), unit) for x in data_raw]
         end
         return MacroeconomicResponse(info, items, _macro_response_count(obj, length(items)))
     end
 
     info_raw = get(obj, :info, nothing)
     info =
-        info_raw isa JSON3.Object ?
-        StructTypes.construct(MacroeconomicIndicator, info_raw) : MacroeconomicIndicator()
+        info_raw isa JSONObject ?
+        construct(MacroeconomicIndicator, info_raw) : MacroeconomicIndicator()
     items = if haskey(obj, :data) && !isnothing(obj.data)
-        [StructTypes.construct(Macroeconomic, x) for x in obj.data]
+        [construct(Macroeconomic, x) for x in obj.data]
     else
         Macroeconomic[]
     end

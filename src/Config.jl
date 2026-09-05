@@ -1,7 +1,7 @@
 module Config
 
 using TOML
-using HTTP, JSON3, Dates
+using HTTP, JSON, Dates
 using ..Constant
 using ..Errors: LongBridgeError
 using ..OAuth: OAuthHandle, access_token as oauth_access_token
@@ -155,7 +155,7 @@ function from_toml(path::AbstractString)
                 response_header_timeout = 10,
                 read_idle_timeout = 30,
             )
-            data = JSON3.read(resp.body)
+            data = JSON.parse(resp.body)
             if data.code == 0
                 access_token = data.data.token
                 raw_expired_at = data.data.expired_at

@@ -6,7 +6,13 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.4** —— 补充说明 `QuoteContext`/`TradeContext` 的外层/内部句柄设计；无 API 变更。
+最新版本：**v0.9.5** —— 从 JSON3.jl 迁移到 JSON.jl 1.0。
+
+### v0.9.5 迁移说明
+
+- SDK 依赖由 `JSON3` + `StructTypes` 换成 `JSON`（1.0+）。未类型化响应解析为 `JSON.Object{String,Any}`（仍支持 `obj.field`、`obj[:field]`、`get(obj, :field, default)`），JSON 数组解析为 `Vector{Any}`（原 `JSON3.Array`）。
+- 手写的响应构造器从 `StructTypes.construct(T, obj)` 迁移到 `LongBridge.Utils.construct(T, obj)`（也可用 `LongBridge.construct` 访问）；`Utils.JSONObject` 是解析后 JSON 对象的类型别名。
+- `Utils.json3_to_mutable` 更名为 `Utils.json_to_mutable`。
 
 ### v0.9.3 迁移说明
 

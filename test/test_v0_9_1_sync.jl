@@ -1,4 +1,4 @@
-using Test, JSON3, HTTP
+using Test, JSON, HTTP
 
 @testset "v0.9.1 upstream v4.4.1 sync" begin
     @test VersionNumber(LongBridge.VERSION) >= v"0.9.1"
@@ -30,7 +30,7 @@ using Test, JSON3, HTTP
     envelope = HTTP.Response(
         429,
         ["x-trace-id" => "trace-429"],
-        JSON3.write(Dict("code" => 429, "message" => "rate limited", "data" => nothing)),
+        JSON.json(Dict("code" => 429, "message" => "rate limited", "data" => nothing)),
     )
     parsed = LongBridge.ApiResponse(envelope)
     @test parsed.code == 429

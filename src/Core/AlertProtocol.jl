@@ -1,8 +1,8 @@
 module AlertProtocol
 
-using EnumX, JSON3, StructTypes
-using ..Utils: Dec64, counter_id_to_symbol
-import ..Utils: _parse_optional_decimal
+using EnumX, JSON
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol
+import ..Utils: _parse_optional_decimal, construct
 
 export AlertCondition, AlertFrequency, AlertItem, AlertSymbolGroup, AlertList
 
@@ -20,7 +20,7 @@ end
 end
 
 function _string_map(obj)
-    if obj isa JSON3.Object || obj isa AbstractDict
+    if obj isa AbstractDict
         return Dict{String,String}(
             String(k) => String(v) for (k, v) in pairs(obj) if !isnothing(v)
         )
@@ -40,8 +40,7 @@ struct AlertItem
     state::Vector{Int}
     value_map::Dict{String,String}
 end
-StructTypes.StructType(::Type{AlertItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AlertItem}, obj::JSON3.Object)
+function construct(::Type{AlertItem}, obj::JSONObject)
     state = if haskey(obj, :state) && !isnothing(obj.state)
         Int[Int(x) for x in obj.state]
     else
@@ -72,10 +71,9 @@ struct AlertSymbolGroup
     product::String
     indicators::Vector{AlertItem}
 end
-StructTypes.StructType(::Type{AlertSymbolGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AlertSymbolGroup}, obj::JSON3.Object)
+function construct(::Type{AlertSymbolGroup}, obj::JSONObject)
     items = if haskey(obj, :indicators) && !isnothing(obj.indicators)
-        [StructTypes.construct(AlertItem, x) for x in obj.indicators]
+        [construct(AlertItem, x) for x in obj.indicators]
     else
         AlertItem[]
     end
@@ -97,10 +95,9 @@ end
 struct AlertList
     lists::Vector{AlertSymbolGroup}
 end
-StructTypes.StructType(::Type{AlertList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AlertList}, obj::JSON3.Object)
+function construct(::Type{AlertList}, obj::JSONObject)
     items = if haskey(obj, :lists) && !isnothing(obj.lists)
-        [StructTypes.construct(AlertSymbolGroup, x) for x in obj.lists]
+        [construct(AlertSymbolGroup, x) for x in obj.lists]
     else
         AlertSymbolGroup[]
     end

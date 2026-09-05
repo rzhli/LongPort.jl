@@ -1,7 +1,7 @@
 using Test
 using LongBridge
-using LongBridge.Utils: Dec64
-using JSON3, StructTypes, Dates
+using LongBridge.Utils: Dec64, construct
+using JSON, Dates
 
 # =========================================================================
 # P1: 新增 Context 全部加载并可构造
@@ -30,7 +30,7 @@ end
     @test Int(AlertFrequency.Daily)       == 1
     @test Int(AlertFrequency.Once)        == 3
 
-    ai = StructTypes.construct(AlertItem, JSON3.read("""
+    ai = construct(AlertItem, JSON.parse("""
         {"id":"100","indicator_id":"1","enabled":true,"frequency":1,"scope":0,
          "text":"涨到 600","state":[1],"value_map":{"price":"600"}}"""))
     @test ai.id == "100"
@@ -38,7 +38,7 @@ end
     @test ai.value_map isa Dict{String,String}
     @test ai.value_map["price"] == "600"
 
-    al = StructTypes.construct(AlertList, JSON3.read("""
+    al = construct(AlertList, JSON.parse("""
         {"lists":[{"counter_id":"ST/HK/700","code":"700","market":"HK","name":"腾讯",
          "price":"380.5","chg":"-1.5","p_chg":"-0.39","product":"stock","indicators":[]}]}"""))
     @test length(al.lists) == 1
@@ -55,14 +55,14 @@ end
     @test _parse_id(123) === Int64(123)
     @test _parse_id("456") === Int64(456)
 
-    ss = StructTypes.construct(SharelistStock, JSON3.read("""
+    ss = construct(SharelistStock, JSON.parse("""
         {"counter_id":"ST/HK/700","name":"腾讯","market":"HK","code":"700",
          "intro":"互联网","change":"-1.17","last_done":"380.5","trade_status":102,"latency":false}"""))
     @test ss.symbol == "700.HK"
     @test ss.last_done == Dec64("380.5")
     @test ss.trade_status == 102
 
-    si = StructTypes.construct(SharelistInfo, JSON3.read("""
+    si = construct(SharelistInfo, JSON.parse("""
         {"id":"42","name":"科技股","description":"","cover":"","subscribers_count":100,
          "created_at":"1747257600","edited_at":"1747257600","this_year_chg":"12.5",
          "creator":{"name":"alice"},"stocks":[],"subscribed":false,"chg":"0.5",
@@ -71,7 +71,7 @@ end
     @test si.this_year_chg == Dec64("12.5")
     @test si.creator.name == "alice"
 
-    sc = StructTypes.construct(SharelistScopes, JSON3.read("""{"subscription":true,"self":false}"""))
+    sc = construct(SharelistScopes, JSON.parse("""{"subscription":true,"self":false}"""))
     @test sc.subscription
     @test !sc.is_self
 end
@@ -102,7 +102,7 @@ end
      "stock_name":"腾讯","cum_amount":"5000","issue_number":5,
      "average_cost":"380.5","cum_profit":"125.5"}
     """
-    plan = StructTypes.construct(DcaPlan, JSON3.read(plan_raw))
+    plan = construct(DcaPlan, JSON.parse(plan_raw))
     @test plan.symbol == "700.HK"
     @test plan.status === DCAStatus.Active
     @test plan.invest_frequency === DCAFrequency.Monthly
@@ -111,19 +111,19 @@ end
     @test plan.market === Market.HK
 
     # 空 per_invest_amount 转 0
-    plan2 = StructTypes.construct(DcaPlan, JSON3.read("""
+    plan2 = construct(DcaPlan, JSON.parse("""
         {"plan_id":"p-2","counter_id":"ST/US/AAPL","per_invest_amount":""}"""))
     @test plan2.per_invest_amount == Dec64(0)
 
     # 其他类型
-    sl = StructTypes.construct(DcaSupportList, JSON3.read("""
+    sl = construct(DcaSupportList, JSON.parse("""
         {"infos":[{"counter_id":"ST/HK/700","support_regular_saving":true}]}"""))
     @test length(sl.infos) == 1
     @test sl.infos[1].symbol == "700.HK"
     @test sl.infos[1].support_regular_saving
 
-    @test StructTypes.construct(DcaCreateResult, JSON3.read("""{"plan_id":"x"}""")).plan_id == "x"
-    @test StructTypes.construct(DcaCalcDateResult, JSON3.read("""{"trade_date":"1747257600"}""")).trade_date == "1747257600"
+    @test construct(DcaCreateResult, JSON.parse("""{"plan_id":"x"}""")).plan_id == "x"
+    @test construct(DcaCalcDateResult, JSON.parse("""{"trade_date":"1747257600"}""")).trade_date == "1747257600"
 end
 
 # =========================================================================
@@ -138,7 +138,7 @@ end
     @test CreateReplyOptions(body="hi").reply_to_id === nothing
 
     # OwnedTopic 反序列化
-    ot = StructTypes.construct(OwnedTopic, JSON3.read("""
+    ot = construct(OwnedTopic, JSON.parse("""
         {"id":"t100","title":"我的话题","description":"摘要","body":"# 标题",
          "author":{"member_id":"m1","name":"alice","avatar":"http://x"},
          "tickers":["AAPL.US"],"hashtags":[],"images":[],
@@ -150,7 +150,7 @@ end
     @test ot.tickers == ["AAPL.US"]
 
     # TopicReply
-    tr = StructTypes.construct(TopicReply, JSON3.read("""
+    tr = construct(TopicReply, JSON.parse("""
         {"id":"r1","topic_id":"t100","body":"评论","reply_to_id":"0",
          "author":{"member_id":"m2","name":"bob"},"images":[],
          "likes_count":2,"comments_count":0,"created_at":"1747257600"}"""))
@@ -158,7 +158,7 @@ end
     @test tr.author.name == "bob"
 
     # NewsItem
-    ni = StructTypes.construct(NewsItem, JSON3.read("""
+    ni = construct(NewsItem, JSON.parse("""
         {"id":"n1","title":"新闻","description":"","url":"http://news",
          "published_at":"1747257600","comments_count":0,"likes_count":0,"shares_count":0}"""))
     @test ni.id == "n1"

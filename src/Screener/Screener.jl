@@ -1,11 +1,9 @@
 module Screener
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: json3_to_mutable
+using ..Utils: construct, json_to_mutable
 using ..ScreenerProtocol
 
 export ScreenerContext,
@@ -65,7 +63,7 @@ function screener_recommend_strategies(ctx::ScreenerContext, market::AbstractStr
         Client.http_get(ctx.config, "/v1/quote/ai/screener/strategies/recommend"; params),
     )
     _check(resp)
-    StructTypes.construct(ScreenerRecommendStrategiesResponse, resp.data)
+    construct(ScreenerRecommendStrategiesResponse, resp.data)
 end
 
 # ── screener_user_strategies ───────────────────────────────────────
@@ -83,7 +81,7 @@ function screener_user_strategies(ctx::ScreenerContext, market::AbstractString)
         Client.http_get(ctx.config, "/v1/quote/ai/screener/strategies/mine"; params),
     )
     _check(resp)
-    StructTypes.construct(ScreenerUserStrategiesResponse, resp.data)
+    construct(ScreenerUserStrategiesResponse, resp.data)
 end
 
 # ── screener_strategy ──────────────────────────────────────────────
@@ -99,7 +97,7 @@ function screener_strategy(ctx::ScreenerContext, id::Integer)
     path = string("/v1/quote/ai/screener/strategy/", Int64(id))
     resp = ApiResponse(Client.http_get(ctx.config, path))
     _check(resp)
-    data = json3_to_mutable(resp.data)
+    data = json_to_mutable(resp.data)
     if data isa Dict
         filter_obj = get(data, "filter", nothing)
         if filter_obj isa Dict
@@ -123,7 +121,7 @@ function _fetch_strategy_filters(ctx::ScreenerContext, sid::Int64)
     path = string("/v1/quote/ai/screener/strategy/", sid)
     resp = ApiResponse(Client.http_get(ctx.config, path))
     _check(resp)
-    strategy = json3_to_mutable(resp.data)
+    strategy = json_to_mutable(resp.data)
     mkt_raw = strategy isa Dict ? get(strategy, "market", "US") : "US"
     mkt = mkt_raw isa AbstractString ? uppercase(String(mkt_raw)) : "US"
     if isempty(mkt) || mkt == "-"
@@ -256,7 +254,7 @@ function screener_search(
     )
     resp = ApiResponse(Client.http_post(ctx.config, "/v1/quote/ai/screener/search"; body))
     _check(resp)
-    data = json3_to_mutable(resp.data)
+    data = json_to_mutable(resp.data)
     _strip_search_keys!(data)
     ScreenerSearchResponse(data)
 end
@@ -276,7 +274,7 @@ end
 function screener_indicators(ctx::ScreenerContext)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/ai/screener/indicators"))
     _check(resp)
-    data = json3_to_mutable(resp.data)
+    data = json_to_mutable(resp.data)
     if data isa Dict
         groups = get(data, "groups", nothing)
         if groups isa Vector

@@ -1,10 +1,11 @@
 module Calendar
 
-using StructTypes, Dates
+using Dates
 
 using ..Config
 using ..Client
 using ..Errors
+using ..Utils: construct
 using ..CalendarProtocol
 
 export CalendarContext, finance_calendar
@@ -50,7 +51,7 @@ function finance_calendar(
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/finance_calendar"; params))
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(CalendarEventsResponse, resp.data)
+    construct(CalendarEventsResponse, resp.data)
 end
 
 end # module Calendar

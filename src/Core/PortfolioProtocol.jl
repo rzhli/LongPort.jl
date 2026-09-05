@@ -1,8 +1,8 @@
 module PortfolioProtocol
 
-using EnumX, JSON3, StructTypes
-using ..Utils: Dec64, counter_id_to_symbol
-import ..Utils: _parse_optional_decimal
+using EnumX, JSON
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol
+import ..Utils: _parse_optional_decimal, construct
 
 export FlowDirection,
     AssetType,
@@ -63,15 +63,13 @@ struct ExchangeRate
     offer_rate::Float64
     other_currency::String
 end
-StructTypes.StructType(::Type{ExchangeRate}) = StructTypes.Struct()
 
 struct ExchangeRates
     exchanges::Vector{ExchangeRate}
 end
-StructTypes.StructType(::Type{ExchangeRates}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ExchangeRates}, obj::JSON3.Object)
+function construct(::Type{ExchangeRates}, obj::JSONObject)
     items = if haskey(obj, :exchanges) && !isnothing(obj.exchanges)
-        [JSON3.read(JSON3.write(e), ExchangeRate) for e in obj.exchanges]
+        [JSON.parse(JSON.json(e), ExchangeRate) for e in obj.exchanges]
     else
         ExchangeRate[]
     end
@@ -87,8 +85,7 @@ struct ProfitSummaryInfo
     loss_max::String
     loss_max_name::String
 end
-StructTypes.StructType(::Type{ProfitSummaryInfo}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitSummaryInfo}, obj::JSON3.Object)
+function construct(::Type{ProfitSummaryInfo}, obj::JSONObject)
     ProfitSummaryInfo(
         _asset_type_from_str(String(get(obj, :asset_type, ""))),
         String(get(obj, :profit_max, "")),
@@ -112,10 +109,9 @@ struct ProfitSummaryBreakdown
     ipo_subscription::Int
     summary_info::Vector{ProfitSummaryInfo}
 end
-StructTypes.StructType(::Type{ProfitSummaryBreakdown}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitSummaryBreakdown}, obj::JSON3.Object)
+function construct(::Type{ProfitSummaryBreakdown}, obj::JSONObject)
     si = if haskey(obj, :summary_info) && !isnothing(obj.summary_info)
-        [StructTypes.construct(ProfitSummaryInfo, x) for x in obj.summary_info]
+        [construct(ProfitSummaryInfo, x) for x in obj.summary_info]
     else
         ProfitSummaryInfo[]
     end
@@ -150,8 +146,7 @@ struct ProfitAnalysisSummary
     sum_profit_rate::Union{Dec64,Nothing}
     profits::ProfitSummaryBreakdown
 end
-StructTypes.StructType(::Type{ProfitAnalysisSummary}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisSummary}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisSummary}, obj::JSONObject)
     ProfitAnalysisSummary(
         String(get(obj, :currency, "")),
         _parse_optional_decimal(get(obj, :current_total_asset, nothing)),
@@ -165,7 +160,7 @@ function StructTypes.construct(::Type{ProfitAnalysisSummary}, obj::JSON3.Object)
         Bool(get(obj, :is_traded, false)),
         _parse_optional_decimal(get(obj, :sum_profit, nothing)),
         _parse_optional_decimal(get(obj, :sum_profit_rate, nothing)),
-        StructTypes.construct(ProfitSummaryBreakdown, obj.profits),
+        construct(ProfitSummaryBreakdown, obj.profits),
     )
 end
 
@@ -188,8 +183,7 @@ struct ProfitAnalysisItem
     derivatives_profit::Union{Dec64,Nothing}
     order_profit::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{ProfitAnalysisItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisItem}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisItem}, obj::JSONObject)
     ProfitAnalysisItem(
         String(get(obj, :name, "")),
         String(get(obj, :market, "")),
@@ -218,10 +212,9 @@ struct ProfitAnalysisSublist
     updated_date::String
     items::Vector{ProfitAnalysisItem}
 end
-StructTypes.StructType(::Type{ProfitAnalysisSublist}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisSublist}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisSublist}, obj::JSONObject)
     items = if haskey(obj, :items) && !isnothing(obj.items)
-        [StructTypes.construct(ProfitAnalysisItem, x) for x in obj.items]
+        [construct(ProfitAnalysisItem, x) for x in obj.items]
     else
         ProfitAnalysisItem[]
     end
@@ -249,8 +242,7 @@ struct ProfitAnalysisByMarketItem
     market::String
     profit::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{ProfitAnalysisByMarketItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisByMarketItem}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisByMarketItem}, obj::JSONObject)
     ProfitAnalysisByMarketItem(
         String(get(obj, :code, "")),
         String(get(obj, :name, "")),
@@ -264,10 +256,9 @@ struct ProfitAnalysisByMarket
     has_more::Bool
     stock_items::Vector{ProfitAnalysisByMarketItem}
 end
-StructTypes.StructType(::Type{ProfitAnalysisByMarket}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisByMarket}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisByMarket}, obj::JSONObject)
     items = if haskey(obj, :stock_items) && !isnothing(obj.stock_items)
-        [StructTypes.construct(ProfitAnalysisByMarketItem, x) for x in obj.stock_items]
+        [construct(ProfitAnalysisByMarketItem, x) for x in obj.stock_items]
     else
         ProfitAnalysisByMarketItem[]
     end
@@ -284,8 +275,7 @@ struct ProfitDetailEntry
     describe::String
     amount::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{ProfitDetailEntry}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitDetailEntry}, obj::JSON3.Object)
+function construct(::Type{ProfitDetailEntry}, obj::JSONObject)
     ProfitDetailEntry(
         String(get(obj, :describe, "")),
         _parse_optional_decimal(get(obj, :amount, nothing)),
@@ -306,11 +296,10 @@ struct ProfitDetails
     holding_value_at_beginning::Union{Dec64,Nothing}
     holding_value_at_ending::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{ProfitDetails}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitDetails}, obj::JSON3.Object)
+function construct(::Type{ProfitDetails}, obj::JSONObject)
     _entries(key) =
         if haskey(obj, key) && !isnothing(obj[key])
-            [StructTypes.construct(ProfitDetailEntry, e) for e in obj[key]]
+            [construct(ProfitDetailEntry, e) for e in obj[key]]
         else
             ProfitDetailEntry[]
         end
@@ -344,12 +333,11 @@ struct ProfitAnalysisDetail
     start_date::String
     end_date::String
 end
-StructTypes.StructType(::Type{ProfitAnalysisDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisDetail}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisDetail}, obj::JSONObject)
     ProfitAnalysisDetail(
         _parse_optional_decimal(get(obj, :profit, nothing)),
-        StructTypes.construct(ProfitDetails, obj.underlying_details),
-        StructTypes.construct(ProfitDetails, obj.derivative_pnl_details),
+        construct(ProfitDetails, obj.underlying_details),
+        construct(ProfitDetails, obj.derivative_pnl_details),
         String(get(obj, :name, "")),
         String(get(obj, :updated_at, "")),
         String(get(obj, :updated_date, "")),
@@ -374,8 +362,7 @@ struct FlowItem
     executed_cost::Union{Dec64,Nothing}
     describe::String
 end
-StructTypes.StructType(::Type{FlowItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FlowItem}, obj::JSON3.Object)
+function construct(::Type{FlowItem}, obj::JSONObject)
     FlowItem(
         String(get(obj, :executed_date, "")),
         _timestamp_value(get(obj, :executed_timestamp, nothing)),
@@ -392,10 +379,9 @@ struct ProfitAnalysisFlows
     flows_list::Vector{FlowItem}
     has_more::Bool
 end
-StructTypes.StructType(::Type{ProfitAnalysisFlows}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ProfitAnalysisFlows}, obj::JSON3.Object)
+function construct(::Type{ProfitAnalysisFlows}, obj::JSONObject)
     items = if haskey(obj, :flows_list) && !isnothing(obj.flows_list)
-        [StructTypes.construct(FlowItem, x) for x in obj.flows_list]
+        [construct(FlowItem, x) for x in obj.flows_list]
     else
         FlowItem[]
     end

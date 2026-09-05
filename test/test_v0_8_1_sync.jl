@@ -2,7 +2,8 @@ using Test
 using LongBridge
 using LongBridge.Screener: _strip_filter, _with_filter, DEFAULT_RETURNS, _strip_search_keys!
 using LongBridge.MarketCtx
-using JSON3, StructTypes, Dates
+using LongBridge.Utils: construct
+using JSON, Dates
 
 # =========================================================================
 # v0.8.1 同步上游 LongPort SDK v4.2.1
@@ -61,7 +62,7 @@ end
 # ── Fundamental: OperatingFinancial.symbol ────────────────────────────────
 
 @testset "OperatingFinancial.symbol (was counter_id)" begin
-    of = StructTypes.construct(LongBridge.FundamentalProtocol.OperatingFinancial, JSON3.read("""
+    of = construct(LongBridge.FundamentalProtocol.OperatingFinancial, JSON.parse("""
         {"code":"AAPL","counter_id":"ST/US/AAPL","currency":"USD","name":"Apple",
          "region":"US","report":"Q1","report_txt":"Q1 FY25",
          "indicators":[]}"""))
@@ -73,9 +74,9 @@ end
 
 # ── Market: rank_categories strips ib_ / rank_list adds ib_ ───────────────
 
-@testset "json3_to_mutable helper" begin
-    raw = JSON3.read("""{"a":1,"b":{"c":[1,2,3]},"d":[{"x":"y"}]}""")
-    d = LongBridge.Utils.json3_to_mutable(raw)
+@testset "json_to_mutable helper" begin
+    raw = JSON.parse("""{"a":1,"b":{"c":[1,2,3]},"d":[{"x":"y"}]}""")
+    d = LongBridge.Utils.json_to_mutable(raw)
     @test d isa Dict{String,Any}
     @test d["a"] == 1
     @test d["b"] isa Dict
@@ -96,14 +97,14 @@ end
 
 # rank_categories 剥离 ib_ 前缀 —— 用模拟的 JSON 直接走客户端处理路径
 @testset "rank_categories ib_ stripping (client-side)" begin
-    raw = JSON3.read("""
+    raw = JSON.parse("""
     {"first_tags":[
        {"key":"ib_market","name":"市场",
         "second_tags":[{"key":"ib_us_top_gain","name":"涨幅榜"},
                        {"key":"ib_us_top_loss","name":"跌幅榜"}]},
        {"key":"ib_industry","name":"行业","second_tags":[]}]}""")
     # 模拟 rank_categories 的客户端处理
-    data = LongBridge.Utils.json3_to_mutable(raw)
+    data = LongBridge.Utils.json_to_mutable(raw)
     for tag in data["first_tags"]
         if haskey(tag, "key") && tag["key"] isa AbstractString
             tag["key"] = replace(tag["key"], r"^ib_" => "")

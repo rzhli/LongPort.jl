@@ -1,6 +1,6 @@
 module Utils
 
-using Dates, JSON3, DataFrames, EnumX
+using Dates, JSON, DataFrames, EnumX
 import DecFP: Dec64
 
 export to_namedtuple,
@@ -14,8 +14,38 @@ export to_namedtuple,
     lookup_counter_id,
     cache_counter_ids,
     is_etf,
-    json3_to_mutable,
+    json_to_mutable,
+    construct,
+    JSONObject,
     Dec64
+
+"""
+    JSONObject
+
+A JSON object as produced by `JSON.parse`: `JSON.Object{String,Any}`.
+
+This is the type the hand-written [`construct`](@ref) methods dispatch on, the
+direct replacement for `JSON3.Object`. `JSON.Object` accepts both string and
+symbol keys (`obj["k"]`, `obj[:k]`, `obj.k`, `get(obj, :k, default)`), which is
+what those methods rely on; a plain `Dict{String,Any}` only supports string keys,
+so it is deliberately *not* part of this alias.
+"""
+const JSONObject = JSON.Object{String,Any}
+
+"""
+    construct(T, obj::JSONObject) -> T
+
+Build `T` from a decoded JSON object (see [`JSONObject`](@ref)).
+
+LongBridge REST responses are decoded once with `JSON.parse` (in
+`Errors.ApiResponse`) and then handed to these hand-written constructors, which
+tolerate missing keys, `null`s, and the string-encoded numbers the LongBridge
+API returns. This generic function replaces the `StructTypes.CustomStruct` +
+`StructTypes.construct` pair used before the JSON.jl 1.0 migration.
+
+Protocol modules add methods with `import ..Utils: construct`.
+"""
+function construct end
 
 # Utility function to convert UTC timestamp to China time (UTC+8)
 to_china_time(timestamp::Integer) = unix2datetime(timestamp) + Hour(8)
@@ -70,12 +100,12 @@ end
 function to_namedtuple(obj)
     if obj === nothing
         return nothing
-    elseif obj isa JSON3.Object
+    elseif obj isa AbstractDict
         # Convert JSON object to NamedTuple
-        keys = Tuple(propertynames(obj))
-        values = Tuple(to_namedtuple(obj[key]) for key in keys)
-        return NamedTuple{keys}(values)
-    elseif obj isa Union{JSON3.Array,AbstractVector}
+        ks = Tuple(Symbol(k) for k in keys(obj))
+        vs = Tuple(to_namedtuple(v) for v in values(obj))
+        return NamedTuple{ks}(vs)
+    elseif obj isa AbstractVector
         # Convert JSON array or Vector to Vector of converted items
         return [to_namedtuple(item) for item in obj]
     elseif isstructtype(typeof(obj))
@@ -92,8 +122,8 @@ function to_namedtuple(obj)
                 # Recursively convert nested objects
             elseif isstructtype(typeof(field_val)) &&
                    !(field_val isa Union{String,Date,DateTime,Tuple}) ||
-                   field_val isa JSON3.Object ||
-                   field_val isa JSON3.Array
+                   field_val isa AbstractDict ||
+                   field_val isa AbstractVector
                 return to_namedtuple(field_val)
             else
                 return field_val
@@ -344,16 +374,16 @@ Return whether `symbol` resolves to an ETF counter ID.
 is_etf(symbol::AbstractString) = startswith(symbol_to_counter_id(symbol), "ETF/")
 
 """
-    json3_to_mutable(x) -> Any
+    json_to_mutable(x) -> Any
 
-递归地把 `JSON3.Object` / `JSON3.Array` 转成 `Dict{String,Any}` / `Vector{Any}`，
+递归地把 `JSON.Object` / JSON 数组转成 `Dict{String,Any}` / `Vector{Any}`，
 便于对原始响应做客户端后处理（如去 prefix、按字段重组）。其它类型原样返回。
 """
-function json3_to_mutable(x)
-    if x isa JSON3.Object
-        Dict{String,Any}(string(k) => json3_to_mutable(v) for (k, v) in pairs(x))
-    elseif x isa JSON3.Array
-        Any[json3_to_mutable(v) for v in x]
+function json_to_mutable(x)
+    if x isa AbstractDict
+        Dict{String,Any}(String(k) => json_to_mutable(v) for (k, v) in pairs(x))
+    elseif x isa AbstractVector
+        Any[json_to_mutable(v) for v in x]
     else
         x
     end

@@ -1,11 +1,9 @@
 module DCA
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id
+using ..Utils: construct, symbol_to_counter_id
 using ..DCAProtocol
 using ..DCAProtocol: _dca_frequency_str, _dca_status_str
 
@@ -54,7 +52,7 @@ function list_dca(
     isnothing(symbol) || (params["counter_id"] = symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/dailycoins/query"; params))
     _check(resp)
-    StructTypes.construct(DcaList, resp.data)
+    construct(DcaList, resp.data)
 end
 
 # ── create_dca ─────────────────────────────────────────────────────
@@ -91,7 +89,7 @@ function create_dca(
     isnothing(day_of_month) || (body["invest_day_of_month"] = string(Int(day_of_month)))
     resp = ApiResponse(Client.http_post(ctx.config, "/v1/dailycoins/create"; body))
     _check(resp)
-    StructTypes.construct(DcaCreateResult, resp.data)
+    construct(DcaCreateResult, resp.data)
 end
 
 # ── update_dca ─────────────────────────────────────────────────────
@@ -120,7 +118,7 @@ function update_dca(
     isnothing(allow_margin) || (body["allow_margin_finance"] = allow_margin ? 1 : 0)
     resp = ApiResponse(Client.http_post(ctx.config, "/v1/dailycoins/update"; body))
     _check(resp)
-    StructTypes.construct(DcaCreateResult, resp.data)
+    construct(DcaCreateResult, resp.data)
 end
 
 # ── pause / resume / stop ──────────────────────────────────────────
@@ -163,7 +161,7 @@ function dca_history(
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/dailycoins/query-records"; params))
     _check(resp)
-    StructTypes.construct(DcaHistoryResponse, resp.data)
+    construct(DcaHistoryResponse, resp.data)
 end
 
 # ── dca_stats ──────────────────────────────────────────────────────
@@ -180,7 +178,7 @@ function dca_stats(ctx::DCAContext; symbol::Union{AbstractString,Nothing} = noth
     isnothing(symbol) || (params["counter_id"] = symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/dailycoins/statistic"; params))
     _check(resp)
-    StructTypes.construct(DcaStats, resp.data)
+    construct(DcaStats, resp.data)
 end
 
 # ── dca_check_support ──────────────────────────────────────────────
@@ -199,7 +197,7 @@ function dca_check_support(ctx::DCAContext, symbols::AbstractVector{<:AbstractSt
         Client.http_post(ctx.config, "/v1/dailycoins/batch-check-support"; body),
     )
     _check(resp)
-    StructTypes.construct(DcaSupportList, resp.data)
+    construct(DcaSupportList, resp.data)
 end
 
 # ── dca_calc_date ──────────────────────────────────────────────────
@@ -226,7 +224,7 @@ function dca_calc_date(
     isnothing(day_of_month) || (body["invest_day_of_month"] = string(Int(day_of_month)))
     resp = ApiResponse(Client.http_post(ctx.config, "/v1/dailycoins/calc-trd-date"; body))
     _check(resp)
-    StructTypes.construct(DcaCalcDateResult, resp.data)
+    construct(DcaCalcDateResult, resp.data)
 end
 
 # ── dca_set_reminder ───────────────────────────────────────────────

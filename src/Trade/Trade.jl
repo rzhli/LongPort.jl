@@ -1,6 +1,6 @@
 module Trade
 
-using JSON3, Dates, DataFrames, StructTypes
+using JSON, Dates, DataFrames
 import ProtoBuf as PB
 using Base.Threads: Atomic, atomic_xchg!
 
@@ -11,7 +11,7 @@ using ..Errors
 using ..TradePush
 using ..TradeProtocol
 using ..USProtocol
-using ..Utils: to_china_time, safeparse, symbol_to_counter_id
+using ..Utils: construct, to_china_time, safeparse, symbol_to_counter_id
 using ..Commands:
     AbstractCommand, HttpGetCmd, HttpPostCmd, HttpPutCmd, HttpDeleteCmd, DisconnectCmd
 
@@ -491,7 +491,7 @@ function history_executions(
     cmd = HttpGetCmd("/v1/trade/execution/history", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return JSON3.read(JSON3.write(resp.data), ExecutionResponse)
+        return JSON.parse(JSON.json(resp.data), ExecutionResponse)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -502,7 +502,7 @@ function today_executions(ctx::TradeContext; symbol::Union{String,Nothing} = not
     cmd = HttpGetCmd("/v1/trade/execution/today", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return JSON3.read(JSON3.write(resp.data), TodayExecutionResponse)
+        return JSON.parse(JSON.json(resp.data), TodayExecutionResponse)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -528,7 +528,7 @@ function history_orders(
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     orders =
-        JSON3.read(JSON3.write(map(_parse_order_data, resp.data.orders)), Vector{Order})
+        JSON.parse(JSON.json(map(_parse_order_data, resp.data.orders)), Vector{Order})
     _orders_to_dataframe(orders)
 end
 
@@ -544,7 +544,7 @@ function today_orders(
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     orders =
-        JSON3.read(JSON3.write(map(_parse_order_data, resp.data.orders)), Vector{Order})
+        JSON.parse(JSON.json(map(_parse_order_data, resp.data.orders)), Vector{Order})
     _orders_to_dataframe(orders)
 end
 
@@ -561,7 +561,7 @@ function submit_order(ctx::TradeContext, options::SubmitOrderOptions)
     cmd = HttpPostCmd("/v1/trade/order", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return JSON3.read(JSON3.write(resp.data), SubmitOrderResponse)
+        return JSON.parse(JSON.json(resp.data), SubmitOrderResponse)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -584,7 +584,7 @@ function account_balance(ctx::TradeContext; currency::Union{Currency.T,Nothing} 
     cmd = HttpGetCmd("/v1/asset/account", params, Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return [StructTypes.construct(AccountBalance, item) for item in resp.data["list"]]
+        return [construct(AccountBalance, item) for item in resp.data["list"]]
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -611,7 +611,7 @@ function cash_flow(
     cmd = HttpGetCmd("/v1/asset/cashflow", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return [StructTypes.construct(CashFlow, item) for item in resp.data.list]
+        return [construct(CashFlow, item) for item in resp.data.list]
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -622,7 +622,7 @@ function fund_positions(ctx::TradeContext; symbol::Union{Vector{String},Nothing}
     cmd = HttpGetCmd("/v1/asset/fund", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return JSON3.read(JSON3.write(resp.data), FundPositionsResponse)
+        return JSON.parse(JSON.json(resp.data), FundPositionsResponse)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -633,7 +633,7 @@ function stock_positions(ctx::TradeContext; symbol::Union{String,Nothing} = noth
     cmd = HttpGetCmd("/v1/asset/stock", to_dict(options), Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return JSON3.read(JSON3.write(resp.data), StockPositionsResponse)
+        return JSON.parse(JSON.json(resp.data), StockPositionsResponse)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -644,7 +644,7 @@ function margin_ratio(ctx::TradeContext, symbol::AbstractString)
     cmd = HttpGetCmd("/v1/risk/margin-ratio", params, Channel(1))
     resp = request(ctx, cmd)
     if resp.code == 0
-        return StructTypes.construct(MarginRatio, resp.data)
+        return construct(MarginRatio, resp.data)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end
@@ -718,7 +718,7 @@ function order_detail(ctx::TradeContext, order_id::AbstractString)
             d["charge_detail"] = cd_dict
         end
 
-        return JSON3.read(JSON3.write(d), OrderDetail)
+        return JSON.parse(JSON.json(d), OrderDetail)
     else
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     end

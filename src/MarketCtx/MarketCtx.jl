@@ -1,11 +1,9 @@
 module MarketCtx
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id, index_symbol_to_counter_id, json3_to_mutable
+using ..Utils: construct, symbol_to_counter_id, index_symbol_to_counter_id, json_to_mutable
 using ..MarketProtocol
 
 export MarketContext,
@@ -47,7 +45,7 @@ _check(resp) =
 function market_status(ctx::MarketContext)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/market-status"))
     _check(resp)
-    StructTypes.construct(MarketStatusResponse, resp.data)
+    construct(MarketStatusResponse, resp.data)
 end
 
 # ── broker_holding ─────────────────────────────────────────────────
@@ -70,7 +68,7 @@ function broker_holding(
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/broker-holding"; params))
     _check(resp)
-    StructTypes.construct(BrokerHoldingTop, resp.data)
+    construct(BrokerHoldingTop, resp.data)
 end
 
 """
@@ -85,7 +83,7 @@ function broker_holding_detail(ctx::MarketContext, symbol::AbstractString)
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/broker-holding/detail"; params))
     _check(resp)
-    StructTypes.construct(BrokerHoldingDetail, resp.data)
+    construct(BrokerHoldingDetail, resp.data)
 end
 
 """
@@ -107,7 +105,7 @@ function broker_holding_daily(
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/broker-holding/daily"; params))
     _check(resp)
-    StructTypes.construct(BrokerHoldingDailyHistory, resp.data)
+    construct(BrokerHoldingDailyHistory, resp.data)
 end
 
 # ── ah_premium ─────────────────────────────────────────────────────
@@ -132,7 +130,7 @@ function ah_premium(
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/ahpremium/klines"; params))
     _check(resp)
-    StructTypes.construct(AhPremiumKlines, resp.data)
+    construct(AhPremiumKlines, resp.data)
 end
 
 """
@@ -147,7 +145,7 @@ function ah_premium_intraday(ctx::MarketContext, symbol::AbstractString)
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/ahpremium/timeshares"; params))
     _check(resp)
-    StructTypes.construct(AhPremiumIntraday, resp.data)
+    construct(AhPremiumIntraday, resp.data)
 end
 
 # ── trade_stats ────────────────────────────────────────────────────
@@ -163,7 +161,7 @@ function trade_stats(ctx::MarketContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/trades-statistics"; params))
     _check(resp)
-    StructTypes.construct(TradeStatsResponse, resp.data)
+    construct(TradeStatsResponse, resp.data)
 end
 
 # ── anomaly ────────────────────────────────────────────────────────
@@ -179,7 +177,7 @@ function anomaly(ctx::MarketContext, market::AbstractString)
     params = Dict{String,Any}("market" => uppercase(String(market)), "category" => "0")
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/changes"; params))
     _check(resp)
-    StructTypes.construct(AnomalyResponse, resp.data)
+    construct(AnomalyResponse, resp.data)
 end
 
 # ── constituent ────────────────────────────────────────────────────
@@ -195,7 +193,7 @@ function constituent(ctx::MarketContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => index_symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/index-constituents"; params))
     _check(resp)
-    StructTypes.construct(IndexConstituents, resp.data)
+    construct(IndexConstituents, resp.data)
 end
 
 # ── top_movers ─────────────────────────────────────────────────────
@@ -228,7 +226,7 @@ function top_movers(
     isnothing(date) || (body["date"] = String(date))
     resp = ApiResponse(Client.http_post(ctx.config, "/v1/quote/market/stock-events"; body))
     _check(resp)
-    StructTypes.construct(TopMoversResponse, resp.data)
+    construct(TopMoversResponse, resp.data)
 end
 
 # ── rank_categories ────────────────────────────────────────────────
@@ -244,7 +242,7 @@ end
 function rank_categories(ctx::MarketContext)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/market/rank/categories"))
     _check(resp)
-    data = json3_to_mutable(resp.data)
+    data = json_to_mutable(resp.data)
     if data isa Dict && haskey(data, "first_tags") && data["first_tags"] isa Vector
         for tag in data["first_tags"]
             tag isa Dict || continue
@@ -283,7 +281,7 @@ function rank_list(ctx::MarketContext, key::AbstractString; need_article::Bool =
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/market/rank/list"; params))
     _check(resp)
-    StructTypes.construct(RankListResponse, resp.data)
+    construct(RankListResponse, resp.data)
 end
 
 end # module MarketCtx

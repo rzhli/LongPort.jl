@@ -1,12 +1,12 @@
 module SharelistProtocol
 
-using JSON3, StructTypes, Dates
-using ..Utils: Dec64, counter_id_to_symbol, to_china_time
-import ..Utils: _parse_optional_decimal
+using JSON, Dates
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol, to_china_time
+import ..Utils: _parse_optional_decimal, construct
 
 export SharelistStock, SharelistInfo, SharelistList, SharelistScopes, SharelistDetail
 
-const RawJSON = Union{JSON3.Object,JSON3.Array,Dict{String,Any},Vector{Any},Nothing}
+const RawJSON = Union{JSON.Object{String,Any},Dict{String,Any},Vector{Any},Nothing}
 
 # ── SharelistStock ─────────────────────────────────────────────────
 
@@ -22,8 +22,7 @@ struct SharelistStock
     trade_status::Union{Int,Nothing}
     latency::Union{Bool,Nothing}
 end
-StructTypes.StructType(::Type{SharelistStock}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{SharelistStock}, obj::JSON3.Object)
+function construct(::Type{SharelistStock}, obj::JSONObject)
     ts = get(obj, :trade_status, nothing)
     lat = get(obj, :latency, nothing)
     SharelistStock(
@@ -63,10 +62,9 @@ struct SharelistInfo
     sharelist_type::Int               # 0=普通, 3=官方, 4=行业
     industry_code::String
 end
-StructTypes.StructType(::Type{SharelistInfo}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{SharelistInfo}, obj::JSON3.Object)
+function construct(::Type{SharelistInfo}, obj::JSONObject)
     stocks = if haskey(obj, :stocks) && !isnothing(obj.stocks)
-        [StructTypes.construct(SharelistStock, x) for x in obj.stocks]
+        [construct(SharelistStock, x) for x in obj.stocks]
     else
         SharelistStock[]
     end
@@ -99,11 +97,10 @@ struct SharelistList
     subscribed_sharelists::Vector{SharelistInfo}
     tail_mark::String
 end
-StructTypes.StructType(::Type{SharelistList}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{SharelistList}, obj::JSON3.Object)
+function construct(::Type{SharelistList}, obj::JSONObject)
     _list(key) =
         if haskey(obj, key) && !isnothing(obj[key])
-            [StructTypes.construct(SharelistInfo, x) for x in obj[key]]
+            [construct(SharelistInfo, x) for x in obj[key]]
         else
             SharelistInfo[]
         end
@@ -120,8 +117,7 @@ struct SharelistScopes
     subscription::Bool
     is_self::Bool                     # JSON 字段名 "self"
 end
-StructTypes.StructType(::Type{SharelistScopes}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{SharelistScopes}, obj::JSON3.Object)
+function construct(::Type{SharelistScopes}, obj::JSONObject)
     SharelistScopes(Bool(get(obj, :subscription, false)), Bool(get(obj, :self, false)))
 end
 
@@ -129,11 +125,10 @@ struct SharelistDetail
     sharelist::SharelistInfo
     scopes::SharelistScopes
 end
-StructTypes.StructType(::Type{SharelistDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{SharelistDetail}, obj::JSON3.Object)
+function construct(::Type{SharelistDetail}, obj::JSONObject)
     SharelistDetail(
-        StructTypes.construct(SharelistInfo, obj.sharelist),
-        StructTypes.construct(SharelistScopes, obj.scopes),
+        construct(SharelistInfo, obj.sharelist),
+        construct(SharelistScopes, obj.scopes),
     )
 end
 

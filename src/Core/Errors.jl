@@ -1,6 +1,6 @@
 module Errors
 
-using JSON3, HTTP
+using JSON, HTTP
 
 export LongBridgeError, UnexpectedHttpResponse, @lperror, ApiResponse
 
@@ -48,7 +48,7 @@ struct ApiResponse{T}
         # reliably access trace/request IDs with their conventional lowercase names.
         headers = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         try
-            json = JSON3.read(body)
+            json = JSON.parse(body)
             # A non-OpenAPI error page may still be valid JSON, but without the
             # standard `code` and `message` envelope fields.
             if !(haskey(json, :code) && haskey(json, :message))

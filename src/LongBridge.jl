@@ -100,7 +100,10 @@ using .DCA
 using .Content
 using .Asset
 using .Screener
-using .Utils: utc_iso8601
+# `construct` is the package-owned constructor protocol for decoded JSON objects
+# (the JSON.jl 1.0 replacement for `StructTypes.construct`). Reachable as
+# `LongBridge.construct`, but deliberately not exported: the name is too generic.
+using .Utils: utc_iso8601, construct
 
 #= ==================== Exports ==================== =#
 

@@ -1,6 +1,6 @@
 module Quote
 
-using ProtoBuf, JSON3, Dates, DataFrames, HTTP, EnumX, StructTypes
+using ProtoBuf, JSON, Dates, DataFrames, HTTP, EnumX
 using Dates: datetime2unix
 using Base.Threads: Atomic, atomic_xchg!
 using ..Config, ..QuotePush, ..Client, ..QuoteProtocol, ..ControlProtocol, ..Constant
@@ -84,12 +84,14 @@ using ..Cache:
     update_candlesticks!,
     clear_candlesticks!
 using ..Utils:
+    JSONObject,
     to_namedtuple,
     to_china_time,
     symbol_to_counter_id,
     counter_id_to_symbol,
     lookup_counter_id,
     cache_counter_ids
+import ..Utils: construct
 using ..QuoteProtocol: PushQuote, PushDepth, PushBrokers, Trade, Candlestick
 using ..USProtocol
 
@@ -712,11 +714,11 @@ function request(ctx::QuoteContext, cmd::AbstractCommand)
 
     # 如果是 HTTP.Response，则读取 body 再解析 JSON
     if resp isa HTTP.Response
-        return JSON3.read(resp.body)
+        return JSON.parse(resp.body)
     end
 
     if resp isa String
-        return JSON3.read(resp)
+        return JSON.parse(resp)
     end
 
     return resp
@@ -1652,8 +1654,7 @@ struct ShortPositionsItem
     balance::String
     cost::String
 end
-StructTypes.StructType(::Type{ShortPositionsItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShortPositionsItem}, obj::JSON3.Object)
+function construct(::Type{ShortPositionsItem}, obj::JSONObject)
     ts_raw = get(obj, :timestamp, 0)
     ts_int = ts_raw isa AbstractString ? parse(Int64, ts_raw) : Int64(ts_raw)
     ShortPositionsItem(
@@ -1672,10 +1673,9 @@ end
 struct ShortPositionsResponse
     data::Vector{ShortPositionsItem}
 end
-StructTypes.StructType(::Type{ShortPositionsResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShortPositionsResponse}, obj::JSON3.Object)
+function construct(::Type{ShortPositionsResponse}, obj::JSONObject)
     items = if haskey(obj, :data) && !isnothing(obj.data)
-        [StructTypes.construct(ShortPositionsItem, x) for x in obj.data]
+        [construct(ShortPositionsItem, x) for x in obj.data]
     else
         ShortPositionsItem[]
     end
@@ -1705,7 +1705,7 @@ function short_positions(ctx::QuoteContext, symbol::AbstractString; count::Integ
     resp = Errors.ApiResponse(Client.http_get(ctx.inner.config, path; params))
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(ShortPositionsResponse, resp.data)
+    construct(ShortPositionsResponse, resp.data)
 end
 
 # ── short_trades ───────────────────────────────────────────────────────
@@ -1727,8 +1727,7 @@ struct ShortTradesItem
     amount::String
     balance::String
 end
-StructTypes.StructType(::Type{ShortTradesItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShortTradesItem}, obj::JSON3.Object)
+function construct(::Type{ShortTradesItem}, obj::JSONObject)
     ts_raw = get(obj, :timestamp, 0)
     ts_int = ts_raw isa AbstractString ? parse(Int64, ts_raw) : Int64(ts_raw)
     ShortTradesItem(
@@ -1746,10 +1745,9 @@ end
 struct ShortTradesResponse
     data::Vector{ShortTradesItem}
 end
-StructTypes.StructType(::Type{ShortTradesResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ShortTradesResponse}, obj::JSON3.Object)
+function construct(::Type{ShortTradesResponse}, obj::JSONObject)
     items = if haskey(obj, :data) && !isnothing(obj.data)
-        [StructTypes.construct(ShortTradesItem, x) for x in obj.data]
+        [construct(ShortTradesItem, x) for x in obj.data]
     else
         ShortTradesItem[]
     end
@@ -1777,7 +1775,7 @@ function short_trades(ctx::QuoteContext, symbol::AbstractString; count::Integer 
     resp = Errors.ApiResponse(Client.http_get(ctx.inner.config, path; params))
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(ShortTradesResponse, resp.data)
+    construct(ShortTradesResponse, resp.data)
 end
 
 # ── option_volume ──────────────────────────────────────────────────────
@@ -1789,8 +1787,7 @@ struct OptionVolumeStats
     c::String
     p::String
 end
-StructTypes.StructType(::Type{OptionVolumeStats}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OptionVolumeStats}, obj::JSON3.Object)
+function construct(::Type{OptionVolumeStats}, obj::JSONObject)
     OptionVolumeStats(String(get(obj, :c, "")), String(get(obj, :p, "")))
 end
 
@@ -1808,7 +1805,7 @@ function option_volume(ctx::QuoteContext, symbol::AbstractString)
     )
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(OptionVolumeStats, resp.data)
+    construct(OptionVolumeStats, resp.data)
 end
 
 # ── option_volume_daily ────────────────────────────────────────────────
@@ -1828,8 +1825,7 @@ struct OptionVolumeDailyStat
     total_call_open_interest::String
     put_call_open_interest_ratio::String
 end
-StructTypes.StructType(::Type{OptionVolumeDailyStat}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OptionVolumeDailyStat}, obj::JSON3.Object)
+function construct(::Type{OptionVolumeDailyStat}, obj::JSONObject)
     OptionVolumeDailyStat(
         counter_id_to_symbol(String(get(obj, :underlying_counter_id, ""))),
         String(get(obj, :timestamp, "")),
@@ -1847,10 +1843,9 @@ end
 struct OptionVolumeDaily
     stats::Vector{OptionVolumeDailyStat}
 end
-StructTypes.StructType(::Type{OptionVolumeDaily}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OptionVolumeDaily}, obj::JSON3.Object)
+function construct(::Type{OptionVolumeDaily}, obj::JSONObject)
     items = if haskey(obj, :stats) && !isnothing(obj.stats)
-        [StructTypes.construct(OptionVolumeDailyStat, x) for x in obj.stats]
+        [construct(OptionVolumeDailyStat, x) for x in obj.stats]
     else
         OptionVolumeDailyStat[]
     end
@@ -1881,7 +1876,7 @@ function option_volume_daily(
     )
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(OptionVolumeDaily, resp.data)
+    construct(OptionVolumeDaily, resp.data)
 end
 
 # ── update_pinned ──────────────────────────────────────────────────────
@@ -1945,8 +1940,7 @@ struct FilingItem
     file_urls::Vector{String}
     published_at::DateTime          # converted from unix seconds (publish_at)
 end
-StructTypes.StructType(::Type{FilingItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{FilingItem}, obj::JSON3.Object)
+function construct(::Type{FilingItem}, obj::JSONObject)
     urls = if haskey(obj, :file_urls) && !isnothing(obj.file_urls)
         [String(u) for u in obj.file_urls]
     else
@@ -1978,19 +1972,15 @@ function filings(ctx::QuoteContext, symbol::AbstractString)
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
     items_obj = haskey(resp.data, :items) ? resp.data.items : ()
-    return [StructTypes.construct(FilingItem, x) for x in items_obj]
+    return [construct(FilingItem, x) for x in items_obj]
 end
 
 # ── symbol_to_counter_ids / resolve_counter_ids ─────────────────────
 
 function _string_dict(obj)
     d = Dict{String,String}()
-    if obj isa JSON3.Object
+    if obj isa AbstractDict
         for (k, v) in pairs(obj)
-            d[String(k)] = isnothing(v) ? "" : String(v)
-        end
-    elseif obj isa AbstractDict
-        for (k, v) in obj
             d[String(k)] = isnothing(v) ? "" : String(v)
         end
     end

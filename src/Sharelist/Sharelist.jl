@@ -1,11 +1,9 @@
 module Sharelist
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id
+using ..Utils: construct, symbol_to_counter_id
 using ..SharelistProtocol
 
 export SharelistContext,
@@ -45,7 +43,7 @@ function list_sharelists(ctx::SharelistContext; count::Integer = 20)
         Dict{String,Any}("size" => Int(count), "self" => "true", "subscription" => "true")
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/sharelists"; params))
     _check(resp)
-    StructTypes.construct(SharelistList, resp.data)
+    construct(SharelistList, resp.data)
 end
 
 # ── detail ─────────────────────────────────────────────────────────
@@ -65,7 +63,7 @@ function sharelist_detail(ctx::SharelistContext, id::Integer)
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/sharelists/$(Int64(id))"; params))
     _check(resp)
-    StructTypes.construct(SharelistDetail, resp.data)
+    construct(SharelistDetail, resp.data)
 end
 
 # ── popular ────────────────────────────────────────────────────────
@@ -81,7 +79,7 @@ function popular_sharelists(ctx::SharelistContext; count::Integer = 20)
     params = Dict{String,Any}("size" => Int(count))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/sharelists/popular"; params))
     _check(resp)
-    StructTypes.construct(SharelistList, resp.data)
+    construct(SharelistList, resp.data)
 end
 
 # ── create ─────────────────────────────────────────────────────────

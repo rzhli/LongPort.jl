@@ -1,11 +1,9 @@
 module Alert
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id
+using ..Utils: construct, symbol_to_counter_id
 using ..AlertProtocol
 
 export AlertContext, list_alerts, add_alert, update_alert, delete_alerts
@@ -33,7 +31,7 @@ _check(resp) =
 function list_alerts(ctx::AlertContext)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/notify/reminders"))
     _check(resp)
-    StructTypes.construct(AlertList, resp.data)
+    construct(AlertList, resp.data)
 end
 
 """

@@ -1,6 +1,6 @@
 module OAuth
 
-using HTTP, JSON3, Random, StructTypes
+using HTTP, JSON, Random
 using Base.Threads: ReentrantLock
 
 using ..Errors: LongBridgeError
@@ -52,9 +52,6 @@ struct OAuthToken
     expires_at::UInt64  # unix timestamp
 end
 
-# JSON3 serialization support
-StructTypes.StructType(::Type{OAuthToken}) = StructTypes.Struct()
-
 """
     is_expired(token::OAuthToken) -> Bool
 
@@ -89,7 +86,7 @@ function save_to_path(token::OAuthToken)
     path = token_path(token.client_id)
     mkpath(dirname(path))
     open(path, "w") do f
-        JSON3.write(f, token)
+        JSON.json(f, token)
     end
     return path
 end
@@ -104,7 +101,7 @@ function load_from_path(client_id::AbstractString)::Union{OAuthToken,Nothing}
     isfile(path) || return nothing
     try
         return open(path) do io
-            JSON3.read(io, OAuthToken)
+            JSON.parse(io, OAuthToken)
         end
     catch e
         @warn "Failed to load cached OAuth token" path exception=e
@@ -211,7 +208,7 @@ function refresh_token!(handle::OAuthHandle)
         ),
     )
 
-    data = JSON3.read(resp.body)
+    data = JSON.parse(resp.body)
 
     new_refresh = get(data, :refresh_token, token.refresh_token)
     new_token = OAuthToken(
@@ -338,7 +335,7 @@ function authorize!(handle::OAuthHandle, open_url_fn)
             ),
         )
 
-        data = JSON3.read(resp.body)
+        data = JSON.parse(resp.body)
 
         new_token = OAuthToken(
             handle.client_id,

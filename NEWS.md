@@ -1,5 +1,17 @@
 # Release Notes
 
+## v0.9.5 (2026-09-05)
+
+### JSON3.jl → JSON.jl 1.0 migration
+
+- Replaced the `JSON3` and `StructTypes` dependencies with `JSON` (1.0+, which brings `StructUtils`). Reading is now `JSON.parse` / `JSON.parse(json, T)`, writing is `JSON.json`.
+- The hand-written response constructors are no longer `StructTypes.CustomStruct` + `StructTypes.construct` overloads. They are methods of `LongBridge.Utils.construct(T, obj::Utils.JSONObject)`, a package-owned generic function (also reachable as `LongBridge.construct`, unexported); protocol modules extend it with `import ..Utils: construct`. Call sites that used `StructTypes.construct(T, resp.data)` now use `construct(T, resp.data)`.
+- `Utils.JSONObject` is the new alias for the decoded-object type (`JSON.Object{String,Any}`, previously `JSON3.Object`). It keeps symbol-key access (`obj.field`, `obj[:field]`, `get(obj, :field, default)`), so the constructors are unchanged apart from the type annotation. JSON arrays are plain `Vector{Any}` now instead of `JSON3.Array`.
+- Types that were declared `StructTypes.Struct()` for typed parsing need no declaration at all: JSON.jl detects plain structs. The US-region models switched from `Base.@kwdef` + `StructTypes.Mutable()` to StructUtils' `@kwarg`, so their field defaults are visible to the parser, and `StructTypes.names` renames became field tags (`&(json = (name = "counter_id",),)`).
+- The custom `"Gtc"`/`"GTC"` → `OrderTag.LongTerm` and `"OPTION_PRE_MARKET"` → `OutsideRTH.OptionPreMarket` wire mappings are now `JSON.lift` methods; all other enums keep matching by member name.
+- Renamed `Utils.json3_to_mutable` to `Utils.json_to_mutable` (same recursive `JSON.Object`/array → `Dict{String,Any}`/`Vector{Any}` conversion).
+- Added `test/test_json_migration.jl`, which pins the untyped-parsing contract, the enum wire values, and the typed parsing of orders, executions, order details, push events, and positions.
+
 ## v0.9.4 (2026-08-22)
 
 ### Documentation

@@ -2,7 +2,8 @@ using Test
 using LongBridge
 using LongBridge.FundamentalProtocol:
     _macroeconomic_country_str, _macroeconomic_importance_from_int, _rfc3339_opt
-using JSON3, StructTypes, Dates
+using LongBridge.Utils: construct
+using JSON, Dates
 
 # =========================================================================
 # v0.8.5 同步上游 LongBridge OpenAPI（macroeconomic 两个 API + macrodata v2 变更）
@@ -44,7 +45,7 @@ end
 end
 
 @testset "MacroeconomicIndicatorListResponse 构造" begin
-    resp = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    resp = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"list":[
             {"indicator_code":"US_CPI_YOY","source_org":"BLS","country":"United States",
              "name":"CPI YoY",
@@ -75,21 +76,21 @@ end
     @test isnothing(nullish.start_date)
     @test nullish.importance == 0
 
-    v2 = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    v2 = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"data":[{"id":"US_CPI_YOY","name":"CPI YoY","importance":3}],"total_count":1}"""))
     @test v2.count == 1
     @test length(v2.data) == 1
     @test v2.data[1].indicator_code == "US_CPI_YOY"
     @test v2.data[1].name == "CPI YoY"
 
-    nested = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    nested = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"count":1,"result":{"rows":[{"id":"CN_CPI","name":"China CPI","importance":2}]}}"""))
     @test nested.count == 1
     @test length(nested.data) == 1
     @test nested.data[1].indicator_code == "CN_CPI"
     @test nested.data[1].name == "China CPI"
 
-    actual_v2 = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    actual_v2 = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"indicator_list":[{"indicator_id":42,"indicator_name":"China CPI YoY",
                             "market":"CN","frequence":"month",
                             "description":"Consumer prices","importance":2}],"total":27}"""))
@@ -101,7 +102,7 @@ end
     @test actual_v2.data[1].periodicity == "month"
     @test actual_v2.data[1].describe == "Consumer prices"
 
-    aliased = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    aliased = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"indicator_list":[{"indicator_id":"CN_CPI","indicator_name":"China CPI",
                             "source":"NBS","country_name":"China (Mainland)",
                             "frequence":"monthly","description":"Consumer prices",
@@ -117,7 +118,7 @@ end
 end
 
 @testset "MacroeconomicResponse 构造" begin
-    resp = StructTypes.construct(MacroeconomicResponse, JSON3.read("""
+    resp = construct(MacroeconomicResponse, JSON.parse("""
         {"info":{"indicator_code":"US_CPI_YOY","country":"United States",
                  "name":"CPI YoY",
                  "importance":3},
@@ -144,7 +145,7 @@ end
     @test pt.unit == "%"
     @test pt.unit_prefix == ""
 
-    v2 = StructTypes.construct(MacroeconomicResponse, JSON3.read("""
+    v2 = construct(MacroeconomicResponse, JSON.parse("""
         {"indicator":{"indicator_id":8401,"indicator_name":"Nonfarm Payrolls",
                       "unit":"Thousand","description":"US employment report",
                       "market":"US","frequence":"monthly","importance":3,
@@ -170,8 +171,8 @@ end
 end
 
 @testset "MacroeconomicResponse info 为 null 兜底" begin
-    resp = StructTypes.construct(MacroeconomicResponse,
-        JSON3.read("""{"info":null,"data":[],"count":0}"""))
+    resp = construct(MacroeconomicResponse,
+        JSON.parse("""{"info":null,"data":[],"count":0}"""))
     @test resp.info isa MacroeconomicIndicator
     @test resp.info.indicator_code == ""
     @test isempty(resp.data)
@@ -202,7 +203,7 @@ end
 
 @testset "macroeconomic 典型用法流程" begin
     # 第一步：macroeconomic_indicators 返回指标列表，按重要性筛选
-    indicators = StructTypes.construct(MacroeconomicIndicatorListResponse, JSON3.read("""
+    indicators = construct(MacroeconomicIndicatorListResponse, JSON.parse("""
         {"list":[
             {"indicator_code":"US_NFP","country":"United States","importance":3,
              "name":"Nonfarm Payrolls",
@@ -220,7 +221,7 @@ end
     @test high[1].name == "Nonfarm Payrolls"
 
     # 第二步：用拿到的 indicator_code 查历史数据，读实际值 vs 预期值
-    hist = StructTypes.construct(MacroeconomicResponse, JSON3.read("""
+    hist = construct(MacroeconomicResponse, JSON.parse("""
         {"info":{"indicator_code":"US_NFP","country":"United States","importance":3,
                  "name":"Nonfarm Payrolls"},
          "data":[

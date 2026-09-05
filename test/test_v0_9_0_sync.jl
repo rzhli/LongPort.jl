@@ -1,4 +1,4 @@
-using Test, Dates, JSON3
+using Test, Dates, JSON
 
 @testset "v0.9.0 data-center routing" begin
     ap = Settings("ap_key", "ap_secret", "ap_token", DateTime(2099, 1, 1))
@@ -26,9 +26,9 @@ end
 @testset "v0.9.0 symbol and enum wire values" begin
     @test LongBridge.Utils.symbol_to_counter_id("BTCUSD.BKKT") == "VA/BKKT/BTCUSD"
     @test LongBridge.Utils.counter_id_to_symbol("VA/BKKT/BTCUSD") == "BTCUSD.BKKT"
-    @test JSON3.read("\"Gtc\"", OrderTag.T) === OrderTag.LongTerm
-    @test JSON3.read("\"GTC\"", OrderTag.T) === OrderTag.LongTerm
-    @test JSON3.read("\"OPTION_PRE_MARKET\"", OutsideRTH.T) ===
+    @test JSON.parse("\"Gtc\"", OrderTag.T) === OrderTag.LongTerm
+    @test JSON.parse("\"GTC\"", OrderTag.T) === OrderTag.LongTerm
+    @test JSON.parse("\"OPTION_PRE_MARKET\"", OutsideRTH.T) ===
           OutsideRTH.OptionPreMarket
     @test !isdefined(OrderTag, :MarginCall)
 end
@@ -66,7 +66,7 @@ end
 @testset "v0.9.0 US response models" begin
     company = LongBridge.USProtocol.construct_us(
         USCompanyOverview,
-        JSON3.read("""
+        JSON.parse("""
         {"intro":"Apple", "market_cap":"1", "top_rank_tags":[{"key":"cap","location":1}]}
         """),
     )
@@ -75,14 +75,14 @@ end
 
     crypto = LongBridge.USProtocol.construct_us(
         USCryptoOverview,
-        JSON3.read("""{"counter_id":"VA/BKKT/BTCUSD","ticker":"BTC"}"""),
+        JSON.parse("""{"counter_id":"VA/BKKT/BTCUSD","ticker":"BTC"}"""),
     )
     LongBridge.USProtocol.normalize_symbols!(crypto)
     @test crypto.symbol == "BTCUSD.BKKT"
 
     assets = LongBridge.USProtocol.construct_us(
         USAssetOverview,
-        JSON3.read("""
+        JSON.parse("""
         {"asset_timestamp":"1700000000","stock_list":[{"symbol":"AAPL","counter_id":"ST/US/AAPL"}],"crypto_list":[{"counter_id":"VA/BKKT/BTCUSD"}]}
         """),
     )
@@ -93,7 +93,7 @@ end
 
     detail = LongBridge.USProtocol.construct_us(
         USOrderDetailResponse,
-        JSON3.read("""
+        JSON.parse("""
         {"order":{"id":"1","counter_id":"ST/US/NKE","underlying_counter_id":"ST/US/NKE","order_histories":[{"status":"Filled"}]},"current_millisecond":"1"}
         """),
     )
@@ -103,7 +103,7 @@ end
 
     realized = LongBridge.USProtocol.construct_us(
         USRealizedPL,
-        JSON3.read("""{"realized_pl_list":[{"category":1,"currency":"USD","metrics":[{"amount":"12.3","period":2}]}]}"""),
+        JSON.parse("""{"realized_pl_list":[{"category":1,"currency":"USD","metrics":[{"amount":"12.3","period":2}]}]}"""),
     )
     @test realized.realized_pl_list[1].metrics[1].amount == "12.3"
 end

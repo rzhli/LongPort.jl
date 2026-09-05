@@ -1,8 +1,8 @@
 module CalendarProtocol
 
-using EnumX, JSON3, StructTypes
-using ..Utils: Dec64, counter_id_to_symbol
-import ..Utils: _parse_optional_decimal
+using EnumX, JSON
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol
+import ..Utils: _parse_optional_decimal, construct
 
 export CalendarCategory,
     CalendarDataKv,
@@ -41,8 +41,7 @@ struct CalendarDataKv
     value_type::String                   # JSON 字段名 "type"
     value_raw::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{CalendarDataKv}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CalendarDataKv}, obj::JSON3.Object)
+function construct(::Type{CalendarDataKv}, obj::JSONObject)
     CalendarDataKv(
         String(get(obj, :key, "")),
         String(get(obj, :value, "")),
@@ -71,10 +70,9 @@ struct CalendarEventInfo
     currency::String
     activity_type::String
 end
-StructTypes.StructType(::Type{CalendarEventInfo}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CalendarEventInfo}, obj::JSON3.Object)
+function construct(::Type{CalendarEventInfo}, obj::JSONObject)
     kvs = if haskey(obj, :data_kv) && !isnothing(obj.data_kv)
-        [StructTypes.construct(CalendarDataKv, kv) for kv in obj.data_kv]
+        [construct(CalendarDataKv, kv) for kv in obj.data_kv]
     else
         CalendarDataKv[]
     end
@@ -105,10 +103,9 @@ struct CalendarDateGroup
     count::Int
     infos::Vector{CalendarEventInfo}
 end
-StructTypes.StructType(::Type{CalendarDateGroup}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CalendarDateGroup}, obj::JSON3.Object)
+function construct(::Type{CalendarDateGroup}, obj::JSONObject)
     infos = if haskey(obj, :infos) && !isnothing(obj.infos)
-        [StructTypes.construct(CalendarEventInfo, e) for e in obj.infos]
+        [construct(CalendarEventInfo, e) for e in obj.infos]
     else
         CalendarEventInfo[]
     end
@@ -126,10 +123,9 @@ struct CalendarEventsResponse
     next_date::String
     list::Vector{CalendarDateGroup}
 end
-StructTypes.StructType(::Type{CalendarEventsResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{CalendarEventsResponse}, obj::JSON3.Object)
+function construct(::Type{CalendarEventsResponse}, obj::JSONObject)
     groups = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(CalendarDateGroup, g) for g in obj.list]
+        [construct(CalendarDateGroup, g) for g in obj.list]
     else
         CalendarDateGroup[]
     end

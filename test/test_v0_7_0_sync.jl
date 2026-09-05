@@ -1,9 +1,9 @@
 using Test
 using LongBridge
-using LongBridge.Utils: Dec64
+using LongBridge.Utils: Dec64, construct
 using LongBridge.QuoteProtocol: UserQuoteProfileRequest, UserQuoteProfileResponse,
                                  QuotePackageDetail
-using JSON3, StructTypes, ProtoBuf, Dates
+using JSON, ProtoBuf, Dates
 
 # =========================================================================
 # v0.7.0 同步上游 Rust SDK 4.1.0 的新增/调整
@@ -22,7 +22,7 @@ using JSON3, StructTypes, ProtoBuf, Dates
 end
 
 @testset "Asset JSON parsing" begin
-    sl = StructTypes.construct(GetStatementListResponse, JSON3.read("""
+    sl = construct(GetStatementListResponse, JSON.parse("""
         {"list":[
           {"dt":20260131,"file_key":"abc123"},
           {"dt":20260229,"file_key":"def456"}
@@ -32,12 +32,12 @@ end
     @test sl.list[1].file_key == "abc123"
 
     # 空响应兜底
-    empty = StructTypes.construct(GetStatementListResponse, JSON3.read("""{}"""))
+    empty = construct(GetStatementListResponse, JSON.parse("""{}"""))
     @test isempty(empty.list)
 
     # 下载链接
-    dl = StructTypes.construct(GetStatementResponse,
-        JSON3.read("""{"url":"https://files.example.com/x"}"""))
+    dl = construct(GetStatementResponse,
+        JSON.parse("""{"url":"https://files.example.com/x"}"""))
     @test dl.url == "https://files.example.com/x"
 end
 
@@ -48,14 +48,14 @@ end
      "file_urls":["https://files.example.com/r1.pdf","https://files.example.com/r2.pdf"],
      "publish_at":"1747257600"}
     """
-    f = StructTypes.construct(FilingItem, JSON3.read(raw))
+    f = construct(FilingItem, JSON.parse(raw))
     @test f.id == "f100"
     @test f.title == "年报"
     @test length(f.file_urls) == 2
     @test f.published_at == unix2datetime(1747257600)
 
     # description 缺失（上游标了 #[serde(default)]）
-    f2 = StructTypes.construct(FilingItem, JSON3.read("""
+    f2 = construct(FilingItem, JSON.parse("""
         {"id":"f2","title":"t","file_name":"x.pdf","file_urls":[],"publish_at":0}"""))
     @test f2.description == ""
     @test isempty(f2.file_urls)

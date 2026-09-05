@@ -6,7 +6,13 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.4** — documented the outer/inner handle design of `QuoteContext`/`TradeContext`; no API change.
+Latest release: **v0.9.5** — migrated from JSON3.jl to JSON.jl 1.0.
+
+### v0.9.5 migration notes
+
+- The SDK now depends on `JSON` (1.0+) instead of `JSON3` + `StructTypes`. Untyped responses decode to `JSON.Object{String,Any}` (which still supports `obj.field`, `obj[:field]` and `get(obj, :field, default)`) and JSON arrays decode to `Vector{Any}` instead of `JSON3.Array`.
+- Hand-written response constructors moved from `StructTypes.construct(T, obj)` to `LongBridge.Utils.construct(T, obj)` (also reachable as `LongBridge.construct`); `Utils.JSONObject` is the decoded-object type alias.
+- `Utils.json3_to_mutable` was renamed to `Utils.json_to_mutable`.
 
 ### v0.9.3 migration notes
 

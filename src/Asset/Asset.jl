@@ -1,10 +1,9 @@
 module Asset
 
-using StructTypes
-
 using ..Config
 using ..Client
 using ..Errors
+using ..Utils: construct
 using ..AssetProtocol
 
 export AssetContext, statements, statement_download_url
@@ -44,7 +43,7 @@ function statements(
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/statement/list"; params))
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(GetStatementListResponse, resp.data)
+    construct(GetStatementListResponse, resp.data)
 end
 
 """
@@ -60,7 +59,7 @@ function statement_download_url(ctx::AssetContext, file_key::AbstractString)
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/statement/download"; params))
     resp.code == 0 ||
         @lperror(resp.code, resp.message, get(resp.headers, "x-request-id", nothing))
-    StructTypes.construct(GetStatementResponse, resp.data)
+    construct(GetStatementResponse, resp.data)
 end
 
 end # module Asset

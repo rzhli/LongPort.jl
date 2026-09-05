@@ -1,7 +1,8 @@
 module ContentProtocol
 
-using JSON3, StructTypes, Dates
-using ..Utils: to_china_time
+using JSON, Dates
+using ..Utils: JSONObject, to_china_time
+import ..Utils: construct
 
 export TopicAuthor,
     TopicImage,
@@ -21,8 +22,7 @@ struct TopicAuthor
     name::String
     avatar::String
 end
-StructTypes.StructType(::Type{TopicAuthor}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopicAuthor}, obj::JSON3.Object)
+function construct(::Type{TopicAuthor}, obj::JSONObject)
     TopicAuthor(
         String(get(obj, :member_id, "")),
         String(get(obj, :name, "")),
@@ -35,8 +35,7 @@ struct TopicImage
     sm::String
     lg::String
 end
-StructTypes.StructType(::Type{TopicImage}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopicImage}, obj::JSON3.Object)
+function construct(::Type{TopicImage}, obj::JSONObject)
     TopicImage(
         String(get(obj, :url, "")),
         String(get(obj, :sm, "")),
@@ -52,7 +51,7 @@ _ts_to_dt(::Nothing) = DateTime(1970, 1, 1) + Hour(8)
 
 _images_from(obj, key) =
     if haskey(obj, key) && !isnothing(obj[key])
-        [StructTypes.construct(TopicImage, x) for x in obj[key]]
+        [construct(TopicImage, x) for x in obj[key]]
     else
         TopicImage[]
     end
@@ -84,14 +83,13 @@ struct OwnedTopic
     created_at::DateTime
     updated_at::DateTime
 end
-StructTypes.StructType(::Type{OwnedTopic}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{OwnedTopic}, obj::JSON3.Object)
+function construct(::Type{OwnedTopic}, obj::JSONObject)
     OwnedTopic(
         String(get(obj, :id, "")),
         String(get(obj, :title, "")),
         String(get(obj, :description, "")),
         String(get(obj, :body, "")),
-        StructTypes.construct(TopicAuthor, obj.author),
+        construct(TopicAuthor, obj.author),
         _strings_from(obj, :tickers),
         _strings_from(obj, :hashtags),
         _images_from(obj, :images),
@@ -118,8 +116,7 @@ struct TopicItem
     likes_count::Int
     shares_count::Int
 end
-StructTypes.StructType(::Type{TopicItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopicItem}, obj::JSON3.Object)
+function construct(::Type{TopicItem}, obj::JSONObject)
     TopicItem(
         String(get(obj, :id, "")),
         String(get(obj, :title, "")),
@@ -145,14 +142,13 @@ struct TopicReply
     comments_count::Int
     created_at::DateTime
 end
-StructTypes.StructType(::Type{TopicReply}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopicReply}, obj::JSON3.Object)
+function construct(::Type{TopicReply}, obj::JSONObject)
     TopicReply(
         String(get(obj, :id, "")),
         String(get(obj, :topic_id, "")),
         String(get(obj, :body, "")),
         String(get(obj, :reply_to_id, "")),
-        StructTypes.construct(TopicAuthor, obj.author),
+        construct(TopicAuthor, obj.author),
         _images_from(obj, :images),
         Int(get(obj, :likes_count, 0)),
         Int(get(obj, :comments_count, 0)),
@@ -172,8 +168,7 @@ struct NewsItem
     likes_count::Int
     shares_count::Int
 end
-StructTypes.StructType(::Type{NewsItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{NewsItem}, obj::JSON3.Object)
+function construct(::Type{NewsItem}, obj::JSONObject)
     NewsItem(
         String(get(obj, :id, "")),
         String(get(obj, :title, "")),

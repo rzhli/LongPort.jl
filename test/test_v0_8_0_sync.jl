@@ -1,6 +1,7 @@
 using Test
 using LongBridge
-using JSON3, StructTypes, Dates
+using LongBridge.Utils: construct
+using JSON, Dates
 
 # =========================================================================
 # v0.8.0 同步上游 LongPort SDK v4.2.0 的新增 / 调整
@@ -19,7 +20,7 @@ end
 # ── Quote: ShortPositionsItem / ShortTradesItem ──────────────────────────
 
 @testset "ShortPositionsItem (US)" begin
-    item = StructTypes.construct(ShortPositionsItem, JSON3.read("""
+    item = construct(ShortPositionsItem, JSON.parse("""
         {"timestamp":"1747257600","rate":"0.03","close":"350.5",
          "current_shares_short":"50000000","avg_daily_share_volume":"100000000",
          "days_to_cover":"0.5"}"""))
@@ -36,7 +37,7 @@ end
 end
 
 @testset "ShortPositionsItem (HK)" begin
-    item = StructTypes.construct(ShortPositionsItem, JSON3.read("""
+    item = construct(ShortPositionsItem, JSON.parse("""
         {"timestamp":"1747257600","rate":"0.012","close":"480.0",
          "amount":"123456789","balance":"7000000","cost":"480.0"}"""))
     @test item.timestamp == unix2datetime(1747257600)
@@ -47,7 +48,7 @@ end
 end
 
 @testset "ShortPositionsResponse" begin
-    resp = StructTypes.construct(ShortPositionsResponse, JSON3.read("""
+    resp = construct(ShortPositionsResponse, JSON.parse("""
         {"counter_id":"ST/HK/700","data":[
           {"timestamp":"1747257600","rate":"0.012","close":"480.0",
            "amount":"100","balance":"50","cost":"480"},
@@ -57,12 +58,12 @@ end
     @test resp.data[1] isa ShortPositionsItem
     @test resp.data[2].rate == "0.013"
     # 空响应兜底
-    empty = StructTypes.construct(ShortPositionsResponse, JSON3.read("""{}"""))
+    empty = construct(ShortPositionsResponse, JSON.parse("""{}"""))
     @test isempty(empty.data)
 end
 
 @testset "ShortTradesItem (US)" begin
-    item = StructTypes.construct(ShortTradesItem, JSON3.read("""
+    item = construct(ShortTradesItem, JSON.parse("""
         {"timestamp":"1747257600","rate":"0.045","close":"180.0",
          "nus_amount":"1000","ny_amount":"2000","total_amount":"3000"}"""))
     @test item.timestamp == unix2datetime(1747257600)
@@ -71,7 +72,7 @@ end
 end
 
 @testset "ShortTradesResponse" begin
-    resp = StructTypes.construct(ShortTradesResponse, JSON3.read("""
+    resp = construct(ShortTradesResponse, JSON.parse("""
         {"counter_id":"ST/HK/700","data":[
           {"timestamp":"1747257600","rate":"0.04","close":"480",
            "amount":"100","balance":"50"}]}"""))
@@ -95,7 +96,7 @@ end
        "post":null}],
      "next_params":{"cursor":"abc"}}
     """
-    resp = StructTypes.construct(TopMoversResponse, JSON3.read(raw))
+    resp = construct(TopMoversResponse, JSON.parse(raw))
     @test length(resp.events) == 2
     @test resp.events[1].timestamp == unix2datetime(1747257600)
     @test resp.events[2].timestamp == unix2datetime(1747171200)  # 字符串也能解析
@@ -107,7 +108,7 @@ end
 
 @testset "RankCategoriesResponse (raw)" begin
     raw = """{"categories":[{"key":"top_gain","name":"涨幅榜"}]}"""
-    r = StructTypes.construct(RankCategoriesResponse, JSON3.read(raw))
+    r = construct(RankCategoriesResponse, JSON.parse(raw))
     @test !isnothing(r.data)
     @test r.data.categories[1].key == "top_gain"
 end
@@ -121,7 +122,7 @@ end
        "amplitude":"0.05","five_day_chg":"0.12","turnover_rate":"0.02",
        "volume_rate":"1.8","pb_ttm":"2.3"}]}
     """
-    r = StructTypes.construct(RankListResponse, JSON3.read(raw))
+    r = construct(RankListResponse, JSON.parse(raw))
     @test r.bmp == true
     @test length(r.lists) == 1
     @test r.lists[1].symbol == "MU.US"
@@ -131,14 +132,14 @@ end
 # ── Fundamental: 9 个新类型 ───────────────────────────────────────────────
 
 @testset "BusinessSegments + History" begin
-    cur = StructTypes.construct(BusinessSegments, JSON3.read("""
+    cur = construct(BusinessSegments, JSON.parse("""
         {"date":"2024.12.31","total":"100","currency":"USD",
          "business":[{"name":"云","percent":"40"},{"name":"广告","percent":"35"}]}"""))
     @test cur.date == "2024.12.31"
     @test length(cur.business) == 2
     @test cur.business[1].name == "云"
 
-    hist = StructTypes.construct(BusinessSegmentsHistory, JSON3.read("""
+    hist = construct(BusinessSegmentsHistory, JSON.parse("""
         {"historical":[
           {"date":"2024.12.31","total":"100","currency":"USD",
            "business":[{"name":"云","percent":"40","value":"40"}],
@@ -149,7 +150,7 @@ end
 end
 
 @testset "InstitutionRatingViews" begin
-    v = StructTypes.construct(InstitutionRatingViews, JSON3.read("""
+    v = construct(InstitutionRatingViews, JSON.parse("""
         {"elist":[
           {"date":"1747257600","buy":"10","over":"5","hold":"3","under":"1","sell":"0","total":"19"},
           {"date":1747171200,"buy":"9","over":"4","hold":"3","under":"1","sell":"0","total":"17"}]}"""))
@@ -167,7 +168,7 @@ end
                 {"name":"晶圆代工","counter_id":"IND/US/FAB","stock_num":5,
                  "chg":"0.03","ytd_chg":"0.2","next":[]}]}}
     """
-    r = StructTypes.construct(IndustryPeersResponse, JSON3.read(raw))
+    r = construct(IndustryPeersResponse, JSON.parse(raw))
     @test r.top.name == "半导体"
     @test !isnothing(r.chain)
     @test r.chain.stock_num == 50
@@ -185,7 +186,7 @@ end
      "fr_roe_ttm":"1.5","fr_profit_margin":"0.25","fr_profit_margin_ttm":"0.26",
      "fr_asset_turn_ttm":"1.1","fr_leverage_ttm":"5.0","fr_debt_assets_ratio":"0.8"}
     """
-    s = StructTypes.construct(FinancialReportSnapshot, JSON3.read(raw))
+    s = construct(FinancialReportSnapshot, JSON.parse(raw))
     @test s.name == "Apple"
     @test s.fo_revenue.value == "124"
     @test s.fr_revenue.yoy == "0.04"
@@ -203,7 +204,7 @@ end
          {"date":"1747257600","pe":"30","pb":"45","ps":"7"},
          {"date":"1747171200","pe":"29","pb":"44","ps":"6.9"}]}]}
     """
-    r = StructTypes.construct(ValuationComparisonResponse, JSON3.read(raw))
+    r = construct(ValuationComparisonResponse, JSON.parse(raw))
     @test length(r.list) == 1
     it = r.list[1]
     @test it.symbol == "AAPL.US"
@@ -222,7 +223,7 @@ end
          {"indicator":{"name":"Quality","score":"90","letter":"A"},
           "sub_indicators":[{"name":"ROE","value":"20","value_type":"pct","score":1.5,"letter":"A"}]}]}]}
     """
-    r = StructTypes.construct(StockRatings, JSON3.read(raw))
+    r = construct(StockRatings, JSON.parse(raw))
     @test r.multi_score == 88.5
     @test r.industry_rank == 3
     @test r.industry_total == 120
@@ -247,7 +248,7 @@ end
        "lists":[{"name":"United States","position_ratio":"0.95",
                  "name_locales_map":{"zh-CN":"美国"}}]}]}
     """
-    r = StructTypes.construct(AssetAllocationResponse, JSON3.read(raw))
+    r = construct(AssetAllocationResponse, JSON.parse(raw))
     @test length(r.info) == 2
     @test r.info[1].asset_type === ElementType.Holdings
     @test r.info[2].asset_type === ElementType.Regional

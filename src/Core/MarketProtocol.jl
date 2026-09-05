@@ -1,9 +1,9 @@
 module MarketProtocol
 
-using EnumX, JSON3, StructTypes, Dates
-using ..Utils: Dec64, counter_id_to_symbol, to_china_time
+using EnumX, JSON, Dates
+using ..Utils: Dec64, JSONObject, counter_id_to_symbol, to_china_time
 using ..Constant: Market
-import ..Utils: _parse_optional_decimal
+import ..Utils: _parse_optional_decimal, construct
 
 export BrokerHoldingPeriod,
     AhPremiumPeriod,
@@ -96,7 +96,7 @@ function _market_from_str(s::AbstractString)
     s == "HK" ? Market.HK : s == "CN" ? Market.CN : s == "SG" ? Market.SG : Market.Unknown
 end
 
-const RawJSON = Union{JSON3.Object,JSON3.Array,Dict{String,Any},Vector{Any},Nothing}
+const RawJSON = Union{JSON.Object{String,Any},Dict{String,Any},Vector{Any},Nothing}
 
 # ── market_status ──────────────────────────────────────────────────
 
@@ -301,8 +301,7 @@ struct MarketTimeItem
     sub_status::Int
     delay_sub_status::Int
 end
-StructTypes.StructType(::Type{MarketTimeItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{MarketTimeItem}, obj::JSON3.Object)
+function construct(::Type{MarketTimeItem}, obj::JSONObject)
     MarketTimeItem(
         _market_from_str(String(get(obj, :market, ""))),
         _market_trade_status_from_value(get(obj, :trade_status, -1)),
@@ -317,10 +316,9 @@ end
 struct MarketStatusResponse
     market_time::Vector{MarketTimeItem}
 end
-StructTypes.StructType(::Type{MarketStatusResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{MarketStatusResponse}, obj::JSON3.Object)
+function construct(::Type{MarketStatusResponse}, obj::JSONObject)
     items = if haskey(obj, :market_time) && !isnothing(obj.market_time)
-        [StructTypes.construct(MarketTimeItem, x) for x in obj.market_time]
+        [construct(MarketTimeItem, x) for x in obj.market_time]
     else
         MarketTimeItem[]
     end
@@ -335,8 +333,7 @@ struct BrokerHoldingEntry
     chg::Union{Dec64,Nothing}
     strong::Bool
 end
-StructTypes.StructType(::Type{BrokerHoldingEntry}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingEntry}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingEntry}, obj::JSONObject)
     BrokerHoldingEntry(
         String(get(obj, :name, "")),
         String(get(obj, :parti_number, "")),
@@ -350,11 +347,10 @@ struct BrokerHoldingTop
     sell::Vector{BrokerHoldingEntry}
     updated_at::String
 end
-StructTypes.StructType(::Type{BrokerHoldingTop}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingTop}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingTop}, obj::JSONObject)
     _list(key) =
         if haskey(obj, key) && !isnothing(obj[key])
-            [StructTypes.construct(BrokerHoldingEntry, x) for x in obj[key]]
+            [construct(BrokerHoldingEntry, x) for x in obj[key]]
         else
             BrokerHoldingEntry[]
         end
@@ -370,8 +366,7 @@ struct BrokerHoldingChanges
     chg_20::Union{Dec64,Nothing}
     chg_60::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{BrokerHoldingChanges}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingChanges}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingChanges}, obj::JSONObject)
     BrokerHoldingChanges(
         _parse_optional_decimal(get(obj, :value, nothing)),
         _parse_optional_decimal(get(obj, :chg_1, nothing)),
@@ -388,13 +383,12 @@ struct BrokerHoldingDetailItem
     shares::BrokerHoldingChanges
     strong::Bool
 end
-StructTypes.StructType(::Type{BrokerHoldingDetailItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingDetailItem}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingDetailItem}, obj::JSONObject)
     BrokerHoldingDetailItem(
         String(get(obj, :name, "")),
         String(get(obj, :parti_number, "")),
-        StructTypes.construct(BrokerHoldingChanges, obj.ratio),
-        StructTypes.construct(BrokerHoldingChanges, obj.shares),
+        construct(BrokerHoldingChanges, obj.ratio),
+        construct(BrokerHoldingChanges, obj.shares),
         Bool(get(obj, :strong, false)),
     )
 end
@@ -403,10 +397,9 @@ struct BrokerHoldingDetail
     list::Vector{BrokerHoldingDetailItem}
     updated_at::String
 end
-StructTypes.StructType(::Type{BrokerHoldingDetail}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingDetail}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingDetail}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(BrokerHoldingDetailItem, x) for x in obj.list]
+        [construct(BrokerHoldingDetailItem, x) for x in obj.list]
     else
         BrokerHoldingDetailItem[]
     end
@@ -421,8 +414,7 @@ struct BrokerHoldingDailyItem
     ratio::Union{Dec64,Nothing}
     chg::Union{Dec64,Nothing}
 end
-StructTypes.StructType(::Type{BrokerHoldingDailyItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingDailyItem}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingDailyItem}, obj::JSONObject)
     BrokerHoldingDailyItem(
         String(get(obj, :date, "")),
         _parse_optional_decimal(get(obj, :holding, nothing)),
@@ -434,10 +426,9 @@ end
 struct BrokerHoldingDailyHistory
     list::Vector{BrokerHoldingDailyItem}
 end
-StructTypes.StructType(::Type{BrokerHoldingDailyHistory}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{BrokerHoldingDailyHistory}, obj::JSON3.Object)
+function construct(::Type{BrokerHoldingDailyHistory}, obj::JSONObject)
     items = if haskey(obj, :list) && !isnothing(obj.list)
-        [StructTypes.construct(BrokerHoldingDailyItem, x) for x in obj.list]
+        [construct(BrokerHoldingDailyItem, x) for x in obj.list]
     else
         BrokerHoldingDailyItem[]
     end
@@ -470,8 +461,7 @@ struct AhPremiumKline
     price_spread::Dec64
     timestamp::DateTime           # 转换为 UTC+8 时间
 end
-StructTypes.StructType(::Type{AhPremiumKline}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AhPremiumKline}, obj::JSON3.Object)
+function construct(::Type{AhPremiumKline}, obj::JSONObject)
     AhPremiumKline(
         _decimal_empty_is_zero(get(obj, :aprice, "")),
         _decimal_empty_is_zero(get(obj, :apreclose, "")),
@@ -489,10 +479,9 @@ end
 struct AhPremiumKlines
     klines::Vector{AhPremiumKline}
 end
-StructTypes.StructType(::Type{AhPremiumKlines}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AhPremiumKlines}, obj::JSON3.Object)
+function construct(::Type{AhPremiumKlines}, obj::JSONObject)
     items = if haskey(obj, :klines) && !isnothing(obj.klines)
-        [StructTypes.construct(AhPremiumKline, x) for x in obj.klines]
+        [construct(AhPremiumKline, x) for x in obj.klines]
     else
         AhPremiumKline[]
     end
@@ -503,10 +492,9 @@ end
 struct AhPremiumIntraday
     klines::Vector{AhPremiumKline}
 end
-StructTypes.StructType(::Type{AhPremiumIntraday}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AhPremiumIntraday}, obj::JSON3.Object)
+function construct(::Type{AhPremiumIntraday}, obj::JSONObject)
     items = if haskey(obj, :klines) && !isnothing(obj.klines)
-        [StructTypes.construct(AhPremiumKline, x) for x in obj.klines]
+        [construct(AhPremiumKline, x) for x in obj.klines]
     else
         AhPremiumKline[]
     end
@@ -526,8 +514,7 @@ struct TradeStatistics
     trade_date::Vector{String}
     trades_count::String
 end
-StructTypes.StructType(::Type{TradeStatistics}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TradeStatistics}, obj::JSON3.Object)
+function construct(::Type{TradeStatistics}, obj::JSONObject)
     dates = if haskey(obj, :trade_date) && !isnothing(obj.trade_date)
         String[String(d) for d in obj.trade_date]
     else
@@ -552,8 +539,7 @@ struct TradePriceLevel
     price::Dec64
     sell_amount::Dec64
 end
-StructTypes.StructType(::Type{TradePriceLevel}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TradePriceLevel}, obj::JSON3.Object)
+function construct(::Type{TradePriceLevel}, obj::JSONObject)
     TradePriceLevel(
         _decimal_empty_is_zero(get(obj, :buy_amount, "")),
         _decimal_empty_is_zero(get(obj, :neutral_amount, "")),
@@ -566,14 +552,13 @@ struct TradeStatsResponse
     statistics::TradeStatistics
     trades::Vector{TradePriceLevel}
 end
-StructTypes.StructType(::Type{TradeStatsResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TradeStatsResponse}, obj::JSON3.Object)
+function construct(::Type{TradeStatsResponse}, obj::JSONObject)
     trades = if haskey(obj, :trades) && !isnothing(obj.trades)
-        [StructTypes.construct(TradePriceLevel, x) for x in obj.trades]
+        [construct(TradePriceLevel, x) for x in obj.trades]
     else
         TradePriceLevel[]
     end
-    TradeStatsResponse(StructTypes.construct(TradeStatistics, obj.statistics), trades)
+    TradeStatsResponse(construct(TradeStatistics, obj.statistics), trades)
 end
 
 # ── anomaly ────────────────────────────────────────────────────────
@@ -586,8 +571,7 @@ struct AnomalyItem
     change_values::Vector{String}
     emotion::Int                       # 1=正向 2=负向
 end
-StructTypes.StructType(::Type{AnomalyItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AnomalyItem}, obj::JSON3.Object)
+function construct(::Type{AnomalyItem}, obj::JSONObject)
     vals = if haskey(obj, :change_values) && !isnothing(obj.change_values)
         String[String(v) for v in obj.change_values]
     else
@@ -607,10 +591,9 @@ struct AnomalyResponse
     all_off::Bool
     changes::Vector{AnomalyItem}
 end
-StructTypes.StructType(::Type{AnomalyResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{AnomalyResponse}, obj::JSON3.Object)
+function construct(::Type{AnomalyResponse}, obj::JSONObject)
     items = if haskey(obj, :changes) && !isnothing(obj.changes)
-        [StructTypes.construct(AnomalyItem, x) for x in obj.changes]
+        [construct(AnomalyItem, x) for x in obj.changes]
     else
         AnomalyItem[]
     end
@@ -636,8 +619,7 @@ struct ConstituentStock
     chg::Union{Dec64,Nothing}
     trade_status::Int
 end
-StructTypes.StructType(::Type{ConstituentStock}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{ConstituentStock}, obj::JSON3.Object)
+function construct(::Type{ConstituentStock}, obj::JSONObject)
     tags = if haskey(obj, :tags) && !isnothing(obj.tags)
         String[String(t) for t in obj.tags]
     else
@@ -668,10 +650,9 @@ struct IndexConstituents
     rise_num::Int
     stocks::Vector{ConstituentStock}
 end
-StructTypes.StructType(::Type{IndexConstituents}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{IndexConstituents}, obj::JSON3.Object)
+function construct(::Type{IndexConstituents}, obj::JSONObject)
     items = if haskey(obj, :stocks) && !isnothing(obj.stocks)
-        [StructTypes.construct(ConstituentStock, x) for x in obj.stocks]
+        [construct(ConstituentStock, x) for x in obj.stocks]
     else
         ConstituentStock[]
     end
@@ -699,8 +680,7 @@ struct TopMoversStock
     labels::Vector{String}
     logo::String
 end
-StructTypes.StructType(::Type{TopMoversStock}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopMoversStock}, obj::JSON3.Object)
+function construct(::Type{TopMoversStock}, obj::JSONObject)
     labels = if haskey(obj, :labels) && !isnothing(obj.labels)
         String[String(l) for l in obj.labels]
     else
@@ -729,14 +709,13 @@ struct TopMoversEvent
     stock::TopMoversStock
     post::RawJSON
 end
-StructTypes.StructType(::Type{TopMoversEvent}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopMoversEvent}, obj::JSON3.Object)
+function construct(::Type{TopMoversEvent}, obj::JSONObject)
     ts_raw = get(obj, :timestamp, 0)
     ts_int = ts_raw isa AbstractString ? parse(Int64, ts_raw) : Int64(ts_raw)
     stock_obj = get(obj, :stock, nothing)
     stock =
         stock_obj === nothing ? TopMoversStock("", "", "", "", "", "", "", String[], "") :
-        StructTypes.construct(TopMoversStock, stock_obj)
+        construct(TopMoversStock, stock_obj)
     TopMoversEvent(
         unix2datetime(ts_int),
         String(get(obj, :alert_reason, "")),
@@ -750,10 +729,9 @@ struct TopMoversResponse
     events::Vector{TopMoversEvent}
     next_params::RawJSON
 end
-StructTypes.StructType(::Type{TopMoversResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{TopMoversResponse}, obj::JSON3.Object)
+function construct(::Type{TopMoversResponse}, obj::JSONObject)
     events = if haskey(obj, :events) && !isnothing(obj.events)
-        [StructTypes.construct(TopMoversEvent, x) for x in obj.events]
+        [construct(TopMoversEvent, x) for x in obj.events]
     else
         TopMoversEvent[]
     end
@@ -768,8 +746,7 @@ end
 struct RankCategoriesResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{RankCategoriesResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{RankCategoriesResponse}, obj) = RankCategoriesResponse(obj)
+construct(::Type{RankCategoriesResponse}, obj) = RankCategoriesResponse(obj)
 
 # ── rank_list ──────────────────────────────────────────────────────
 
@@ -794,8 +771,7 @@ struct RankListItem
     volume_rate::String
     pb_ttm::String
 end
-StructTypes.StructType(::Type{RankListItem}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RankListItem}, obj::JSON3.Object)
+function construct(::Type{RankListItem}, obj::JSONObject)
     RankListItem(
         counter_id_to_symbol(String(get(obj, :counter_id, ""))),
         String(get(obj, :code, "")),
@@ -820,10 +796,9 @@ struct RankListResponse
     bmp::Bool
     lists::Vector{RankListItem}
 end
-StructTypes.StructType(::Type{RankListResponse}) = StructTypes.CustomStruct()
-function StructTypes.construct(::Type{RankListResponse}, obj::JSON3.Object)
+function construct(::Type{RankListResponse}, obj::JSONObject)
     items = if haskey(obj, :lists) && !isnothing(obj.lists)
-        [StructTypes.construct(RankListItem, x) for x in obj.lists]
+        [construct(RankListItem, x) for x in obj.lists]
     else
         RankListItem[]
     end

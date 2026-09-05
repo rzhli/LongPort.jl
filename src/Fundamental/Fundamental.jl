@@ -1,11 +1,11 @@
 module Fundamental
 
-using JSON3, StructTypes, Dates
+using JSON, Dates
 
 using ..Config
 using ..Client
 using ..Errors
-using ..Utils: symbol_to_counter_id
+using ..Utils: construct, symbol_to_counter_id
 using ..FundamentalProtocol
 using ..USProtocol
 
@@ -208,7 +208,7 @@ function financial_report(
         (params["report"] = FundamentalProtocol._financial_report_period_str(period))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/financial-reports"; params))
     _check(resp)
-    StructTypes.construct(FinancialReports, resp.data)
+    construct(FinancialReports, resp.data)
 end
 
 # ── 2. institution_rating (fan-out) ────────────────────────────────
@@ -240,8 +240,8 @@ function institution_rating(ctx::FundamentalContext, symbol::AbstractString)
     _check(latest)
     _check(summary)
     InstitutionRating(
-        StructTypes.construct(InstitutionRatingLatest, latest.data),
-        StructTypes.construct(InstitutionRatingSummary, summary.data),
+        construct(InstitutionRatingLatest, latest.data),
+        construct(InstitutionRatingSummary, summary.data),
     )
 end
 
@@ -260,7 +260,7 @@ function institution_rating_detail(ctx::FundamentalContext, symbol::AbstractStri
         Client.http_get(ctx.config, "/v1/quote/institution-ratings/detail"; params),
     )
     _check(resp)
-    StructTypes.construct(InstitutionRatingDetail, resp.data)
+    construct(InstitutionRatingDetail, resp.data)
 end
 
 # ── 4. dividend ────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ function dividend(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/dividends"; params))
     _check(resp)
-    StructTypes.construct(DividendList, resp.data)
+    construct(DividendList, resp.data)
 end
 
 # ── 5. dividend_detail ─────────────────────────────────────────────
@@ -292,7 +292,7 @@ function dividend_detail(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/dividends/details"; params))
     _check(resp)
-    StructTypes.construct(DividendList, resp.data)
+    construct(DividendList, resp.data)
 end
 
 # ── 6. forecast_eps ────────────────────────────────────────────────
@@ -308,7 +308,7 @@ function forecast_eps(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/forecast-eps"; params))
     _check(resp)
-    StructTypes.construct(ForecastEps, resp.data)
+    construct(ForecastEps, resp.data)
 end
 
 # ── 7. consensus ───────────────────────────────────────────────────
@@ -326,7 +326,7 @@ function consensus(ctx::FundamentalContext, symbol::AbstractString)
         Client.http_get(ctx.config, "/v1/quote/financial-consensus-detail"; params),
     )
     _check(resp)
-    StructTypes.construct(FinancialConsensus, resp.data)
+    construct(FinancialConsensus, resp.data)
 end
 
 # ── 8. valuation ───────────────────────────────────────────────────
@@ -346,7 +346,7 @@ function valuation(ctx::FundamentalContext, symbol::AbstractString)
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/valuation"; params))
     _check(resp)
-    StructTypes.construct(ValuationData, resp.data)
+    construct(ValuationData, resp.data)
 end
 
 # ── 9. valuation_history ───────────────────────────────────────────
@@ -362,7 +362,7 @@ function valuation_history(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/valuation/detail"; params))
     _check(resp)
-    StructTypes.construct(ValuationHistoryResponse, resp.data)
+    construct(ValuationHistoryResponse, resp.data)
 end
 
 # ── 10. industry_valuation ─────────────────────────────────────────
@@ -380,7 +380,7 @@ function industry_valuation(ctx::FundamentalContext, symbol::AbstractString)
         Client.http_get(ctx.config, "/v1/quote/industry-valuation-comparison"; params),
     )
     _check(resp)
-    StructTypes.construct(IndustryValuationList, resp.data)
+    construct(IndustryValuationList, resp.data)
 end
 
 # ── 11. industry_valuation_dist ────────────────────────────────────
@@ -398,7 +398,7 @@ function industry_valuation_dist(ctx::FundamentalContext, symbol::AbstractString
         Client.http_get(ctx.config, "/v1/quote/industry-valuation-distribution"; params),
     )
     _check(resp)
-    StructTypes.construct(IndustryValuationDist, resp.data)
+    construct(IndustryValuationDist, resp.data)
 end
 
 # ── 12. company ────────────────────────────────────────────────────
@@ -414,7 +414,7 @@ function company(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/comp-overview"; params))
     _check(resp)
-    StructTypes.construct(CompanyOverview, resp.data)
+    construct(CompanyOverview, resp.data)
 end
 
 # ── 13. executive ──────────────────────────────────────────────────
@@ -431,7 +431,7 @@ function executive(ctx::FundamentalContext, symbol::AbstractString)
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/company-professionals"; params))
     _check(resp)
-    StructTypes.construct(ExecutiveList, resp.data)
+    construct(ExecutiveList, resp.data)
 end
 
 # ── 14. shareholder ────────────────────────────────────────────────
@@ -447,7 +447,7 @@ function shareholder(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/shareholders"; params))
     _check(resp)
-    StructTypes.construct(ShareholderList, resp.data)
+    construct(ShareholderList, resp.data)
 end
 
 # ── 15. fund_holder ────────────────────────────────────────────────
@@ -463,7 +463,7 @@ function fund_holder(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/fund-holders"; params))
     _check(resp)
-    StructTypes.construct(FundHolders, resp.data)
+    construct(FundHolders, resp.data)
 end
 
 # ── 16. corp_action ────────────────────────────────────────────────
@@ -483,7 +483,7 @@ function corp_action(ctx::FundamentalContext, symbol::AbstractString)
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/company-act"; params))
     _check(resp)
-    StructTypes.construct(CorpActions, resp.data)
+    construct(CorpActions, resp.data)
 end
 
 # ── 17. invest_relation ────────────────────────────────────────────
@@ -499,7 +499,7 @@ function invest_relation(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol), "count" => "0")
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/invest-relations"; params))
     _check(resp)
-    StructTypes.construct(InvestRelations, resp.data)
+    construct(InvestRelations, resp.data)
 end
 
 # ── 18. operating ──────────────────────────────────────────────────
@@ -515,7 +515,7 @@ function operating(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/operatings"; params))
     _check(resp)
-    StructTypes.construct(OperatingList, resp.data)
+    construct(OperatingList, resp.data)
 end
 
 # ── 19. buyback ────────────────────────────────────────────────────
@@ -531,7 +531,7 @@ function buyback(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/buy-backs"; params))
     _check(resp)
-    StructTypes.construct(BuybackData, resp.data)
+    construct(BuybackData, resp.data)
 end
 
 # ── 20. ratings ────────────────────────────────────────────────────
@@ -547,7 +547,7 @@ function ratings(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/ratings"; params))
     _check(resp)
-    StructTypes.construct(StockRatings, resp.data)
+    construct(StockRatings, resp.data)
 end
 
 # ════════════════════════════════════════════════════════════════════
@@ -569,7 +569,7 @@ function business_segments(ctx::FundamentalContext, symbol::AbstractString)
         Client.http_get(ctx.config, "/v1/quote/fundamentals/business-segments"; params),
     )
     _check(resp)
-    StructTypes.construct(BusinessSegments, resp.data)
+    construct(BusinessSegments, resp.data)
 end
 
 # ── 22. business_segments_history ──────────────────────────────────
@@ -598,7 +598,7 @@ function business_segments_history(
         ),
     )
     _check(resp)
-    StructTypes.construct(BusinessSegmentsHistory, resp.data)
+    construct(BusinessSegmentsHistory, resp.data)
 end
 
 # ── 23. institution_rating_views ───────────────────────────────────
@@ -615,7 +615,7 @@ function institution_rating_views(ctx::FundamentalContext, symbol::AbstractStrin
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/ratings/institutional"; params))
     _check(resp)
-    StructTypes.construct(InstitutionRatingViews, resp.data)
+    construct(InstitutionRatingViews, resp.data)
 end
 
 # ── 24. industry_rank ──────────────────────────────────────────────
@@ -642,7 +642,7 @@ function industry_rank(
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/industry/rank"; params))
     _check(resp)
-    StructTypes.construct(IndustryRankResponse, resp.data)
+    construct(IndustryRankResponse, resp.data)
 end
 
 # ── 25. industry_peers ─────────────────────────────────────────────
@@ -670,7 +670,7 @@ function industry_peers(
     )
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/industries/peers"; params))
     _check(resp)
-    StructTypes.construct(IndustryPeersResponse, resp.data)
+    construct(IndustryPeersResponse, resp.data)
 end
 
 # ── 26. financial_report_snapshot ──────────────────────────────────
@@ -697,7 +697,7 @@ function financial_report_snapshot(
         Client.http_get(ctx.config, "/v1/quote/financials/earnings-snapshot"; params),
     )
     _check(resp)
-    StructTypes.construct(FinancialReportSnapshot, resp.data)
+    construct(FinancialReportSnapshot, resp.data)
 end
 
 # ── 27. shareholder_top ────────────────────────────────────────────
@@ -713,7 +713,7 @@ function shareholder_top(ctx::FundamentalContext, symbol::AbstractString)
     params = Dict{String,Any}("counter_id" => symbol_to_counter_id(symbol))
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/shareholders/top"; params))
     _check(resp)
-    StructTypes.construct(ShareholderTopResponse, resp.data)
+    construct(ShareholderTopResponse, resp.data)
 end
 
 # ── 28. shareholder_detail ─────────────────────────────────────────
@@ -737,7 +737,7 @@ function shareholder_detail(
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/shareholders/holding"; params))
     _check(resp)
-    StructTypes.construct(ShareholderDetailResponse, resp.data)
+    construct(ShareholderDetailResponse, resp.data)
 end
 
 # ── 29. valuation_comparison ───────────────────────────────────────
@@ -763,11 +763,11 @@ function valuation_comparison(
     )
     if !isnothing(comparison_symbols)
         ids = String[symbol_to_counter_id(s) for s in comparison_symbols]
-        params["comparison_counter_ids"] = JSON3.write(ids)
+        params["comparison_counter_ids"] = JSON.json(ids)
     end
     resp = ApiResponse(Client.http_get(ctx.config, "/v1/quote/compare/valuation"; params))
     _check(resp)
-    StructTypes.construct(ValuationComparisonResponse, resp.data)
+    construct(ValuationComparisonResponse, resp.data)
 end
 
 # ── 30. etf_asset_allocation ──────────────────────────────────────
@@ -784,7 +784,7 @@ function etf_asset_allocation(ctx::FundamentalContext, symbol::AbstractString)
     resp =
         ApiResponse(Client.http_get(ctx.config, "/v1/quote/etf-asset-allocation"; params))
     _check(resp)
-    StructTypes.construct(AssetAllocationResponse, resp.data)
+    construct(AssetAllocationResponse, resp.data)
 end
 
 # ════════════════════════════════════════════════════════════════════
@@ -820,7 +820,7 @@ function macroeconomic_indicators(
     isnothing(limit) || (params["limit"] = Int(limit))
     resp = ApiResponse(Client.http_get(ctx.config, "/v2/quote/macrodata"; params))
     _check(resp)
-    StructTypes.construct(MacroeconomicIndicatorListResponse, resp.data)
+    construct(MacroeconomicIndicatorListResponse, resp.data)
 end
 
 # ── 32. macroeconomic ─────────────────────────────────────────────
@@ -852,7 +852,7 @@ function macroeconomic(
     isnothing(sort) || (params["sort"] = String(sort))
     resp = ApiResponse(Client.http_get(ctx.config, "/v2/quote/macrodata/$(id)"; params))
     _check(resp)
-    StructTypes.construct(MacroeconomicResponse, resp.data)
+    construct(MacroeconomicResponse, resp.data)
 end
 
 _date_str(d::Dates.Date) = Dates.format(d, Dates.dateformat"yyyy-mm-dd")

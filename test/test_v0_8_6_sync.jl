@@ -9,7 +9,8 @@ using LongBridge.MarketProtocol:
     _market_trade_status_label,
     _market_trade_status_name,
     _market_trade_status_normalize
-using JSON3, StructTypes
+using LongBridge.Utils: construct
+using JSON
 
 # =========================================================================
 # v0.8.6 同步上游 LongBridge OpenAPI v4.3.3（market TradeStatus）
@@ -54,7 +55,7 @@ end
 end
 
 @testset "MarketTimeItem 使用 market TradeStatus" begin
-    item = StructTypes.construct(MarketTimeItem, JSON3.read("""
+    item = construct(MarketTimeItem, JSON.parse("""
         {"market":"US","trade_status":202,"timestamp":"1717200000",
          "delay_trade_status":204,"delay_timestamp":"1717200000",
          "sub_status":0,"delay_sub_status":0}"""))

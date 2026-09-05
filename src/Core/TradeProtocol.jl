@@ -7,11 +7,12 @@ import ProtoBuf as PB
 using ProtoBuf: OneOf
 using EnumX
 using Dates
-using JSON3, StructTypes
+using JSON
 using Printf
 using ..QuoteProtocol: SecurityBoard
 using ..Constant
 using ..Utils
+import ..Utils: construct
 
 export Command,
     DispatchType,
@@ -392,15 +393,17 @@ Order tag
     Grey = 3
 end
 
-function StructTypes.construct(::Type{OrderTag.T}, value::String; kw...)
+# LongBridge sends `"Gtc"`/`"GTC"` where the enum member is `LongTerm`, so the
+# default name-matching `lift` for enums is not enough: JSON.jl calls `JSON.lift`
+# whenever a JSON value has to become an `OrderTag.T`.
+function JSON.lift(::Type{OrderTag.T}, value::AbstractString)
     value == "Gtc" && return OrderTag.LongTerm
     value == "GTC" && return OrderTag.LongTerm
     value == "Normal" && return OrderTag.Normal
     value == "Grey" && return OrderTag.Grey
     return OrderTag.UnknownTag
 end
-StructTypes.construct(::Type{OrderTag.T}, value::Symbol; kw...) =
-    StructTypes.construct(OrderTag.T, String(value); kw...)
+JSON.lift(::Type{OrderTag.T}, value::Symbol) = JSON.lift(OrderTag.T, String(value))
 
 """
 Time in force type
@@ -442,15 +445,14 @@ Enable or disable outside regular trading hours
     OptionPreMarket = 4
 end
 
-function StructTypes.construct(::Type{OutsideRTH.T}, value::String; kw...)
+function JSON.lift(::Type{OutsideRTH.T}, value::AbstractString)
     value == "RTH_ONLY" && return OutsideRTH.RTH_ONLY
     value == "ANY_TIME" && return OutsideRTH.ANY_TIME
     value == "OVERNIGHT" && return OutsideRTH.OVERNIGHT
     value == "OPTION_PRE_MARKET" && return OutsideRTH.OptionPreMarket
     return OutsideRTH.UnknownOutsideRth
 end
-StructTypes.construct(::Type{OutsideRTH.T}, value::Symbol; kw...) =
-    StructTypes.construct(OutsideRTH.T, String(value); kw...)
+JSON.lift(::Type{OutsideRTH.T}, value::Symbol) = JSON.lift(OutsideRTH.T, String(value))
 
 """
 Commission free status
@@ -525,7 +527,6 @@ struct Execution
     quantity::Int64
     price::Float64
 end
-StructTypes.StructType(::Type{Execution}) = StructTypes.Struct()
 
 """
 Order information
@@ -558,7 +559,6 @@ struct Order
     outside_rth::OutsideRTH.T
     remark::String
 end
-StructTypes.StructType(::Type{Order}) = StructTypes.Struct()
 
 
 """
@@ -591,7 +591,6 @@ struct PushOrderChanged
     last_price::Union{Float64,Nothing}
     remark::String
 end
-StructTypes.StructType(::Type{PushOrderChanged}) = StructTypes.Struct()
 
 """
 Margin ratio information
@@ -601,9 +600,8 @@ struct MarginRatio
     mm_factor::Float64
     fm_factor::Float64
 end
-StructTypes.StructType(::Type{MarginRatio}) = StructTypes.CustomStruct()
 
-function StructTypes.construct(::Type{MarginRatio}, obj::JSON3.Object)
+function construct(::Type{MarginRatio}, obj::JSONObject)
     MarginRatio(
         safeparse(Float64, obj.im_factor),
         safeparse(Float64, obj.mm_factor),
@@ -627,7 +625,6 @@ struct OrderChargeFee
     fee::Float64
     currency::String
 end
-StructTypes.StructType(::Type{OrderChargeFee}) = StructTypes.Struct()
 
 """
 Order charge item
@@ -637,7 +634,6 @@ struct OrderChargeItem
     name::String
     fees::Vector{OrderChargeFee}
 end
-StructTypes.StructType(::Type{OrderChargeItem}) = StructTypes.Struct()
 
 
 """
@@ -648,7 +644,6 @@ struct OrderChargeDetail
     currency::String
     items::Vector{OrderChargeItem}
 end
-StructTypes.StructType(::Type{OrderChargeDetail}) = StructTypes.Struct()
 
 """
 Order history detail
@@ -660,7 +655,6 @@ struct OrderHistoryDetail
     msg::String
     time::DateTime
 end
-StructTypes.StructType(::Type{OrderHistoryDetail}) = StructTypes.Struct()
 
 """
 Order detail
@@ -704,7 +698,6 @@ struct OrderDetail
     history::Vector{OrderHistoryDetail}
     charge_detail::OrderChargeDetail
 end
-StructTypes.StructType(::Type{OrderDetail}) = StructTypes.Struct()
 
 function Base.show(io::IO, d::OrderDetail)
     println(io, "Order Details:")
@@ -727,7 +720,6 @@ struct EstimateMaxPurchaseQuantityResponse
     cash_max_qty::Int64
     margin_max_qty::Int64
 end
-StructTypes.StructType(::Type{EstimateMaxPurchaseQuantityResponse}) = StructTypes.Struct()
 
 """
 Frozen transaction fee
@@ -736,9 +728,8 @@ struct FrozenTransactionFee
     currency::Currency.T
     frozen_transaction_fee::Float64
 end
-StructTypes.StructType(::Type{FrozenTransactionFee}) = StructTypes.CustomStruct()
 
-function StructTypes.construct(::Type{FrozenTransactionFee}, obj::JSON3.Object)
+function construct(::Type{FrozenTransactionFee}, obj::JSONObject)
     FrozenTransactionFee(
         safeparse(Currency.T, obj.currency),
         safeparse(Float64, obj.frozen_transaction_fee),
@@ -755,7 +746,6 @@ Submit order response
 struct SubmitOrderResponse
     order_id::String
 end
-StructTypes.StructType(::Type{SubmitOrderResponse}) = StructTypes.Struct()
 
 """
 Cash info
@@ -768,9 +758,7 @@ struct CashInfo
     currency::Currency.T
 end
 
-StructTypes.StructType(::Type{CashInfo}) = StructTypes.CustomStruct()
-
-function StructTypes.construct(::Type{CashInfo}, obj::JSON3.Object)
+function construct(::Type{CashInfo}, obj::JSONObject)
     CashInfo(
         safeparse(Float64, obj.withdraw_cash),
         safeparse(Float64, obj.available_cash),
@@ -807,9 +795,7 @@ struct AccountBalance
     market::Union{Market.T,Nothing}
 end
 
-StructTypes.StructType(::Type{AccountBalance}) = StructTypes.CustomStruct()
-
-function StructTypes.construct(::Type{AccountBalance}, obj::JSON3.Object)
+function construct(::Type{AccountBalance}, obj::JSONObject)
     AccountBalance(
         safeparse(Float64, obj.total_cash),
         safeparse(Float64, obj.max_finance_amount),
@@ -817,12 +803,12 @@ function StructTypes.construct(::Type{AccountBalance}, obj::JSON3.Object)
         safeparse(RiskLevel.T, obj.risk_level),
         safeparse(Float64, obj.margin_call),
         safeparse(Currency.T, obj.currency),
-        [StructTypes.construct(CashInfo, item) for item in obj.cash_infos],
+        [construct(CashInfo, item) for item in obj.cash_infos],
         safeparse(Float64, obj.net_assets),
         safeparse(Float64, obj.init_margin),
         safeparse(Float64, obj.maintenance_margin),
         safeparse(Float64, obj.buy_power),
-        [StructTypes.construct(FrozenTransactionFee, item) for item in obj.frozen_transaction_fees],
+        [construct(FrozenTransactionFee, item) for item in obj.frozen_transaction_fees],
         haskey(obj, :market) && !isnothing(obj.market) ? safeparse(Market.T, obj.market) : nothing,
     )
 end
@@ -869,7 +855,6 @@ struct CashFlow
     symbol::Union{String,Nothing}
     description::String
 end
-StructTypes.StructType(::Type{CashFlow}) = StructTypes.CustomStruct()
 
 function _cash_flow_datetime(val)
     if val isa DateTime
@@ -882,7 +867,7 @@ function _cash_flow_datetime(val)
     end
 end
 
-function StructTypes.construct(::Type{CashFlow}, obj::JSON3.Object)
+function construct(::Type{CashFlow}, obj::JSONObject)
     CashFlow(
         string(obj.transaction_flow_name),
         safeparse(CashFlowDirection.T, obj.direction),
@@ -951,7 +936,6 @@ struct FundPosition
     cost_net_asset_value::String
     net_asset_value_day::String
 end
-StructTypes.StructType(::Type{FundPosition}) = StructTypes.Struct()
 
 function Base.show(io::IO, pos::FundPosition)
     print(
@@ -974,7 +958,6 @@ struct FundPositionChannel
     account_channel::String
     fund_info::Vector{FundPosition}
 end
-StructTypes.StructType(::Type{FundPositionChannel}) = StructTypes.Struct()
 
 function Base.show(io::IO, channel::FundPositionChannel)
     print(io, channel.account_channel, ": ", _count_label(length(channel.fund_info), "fund"))
@@ -986,7 +969,6 @@ Fund positions response
 struct FundPositionsResponse
     list::Vector{FundPositionChannel}
 end
-StructTypes.StructType(::Type{FundPositionsResponse}) = StructTypes.Struct()
 
 function Base.show(io::IO, resp::FundPositionsResponse)
     total = 0
@@ -1023,7 +1005,6 @@ struct StockPosition
     market::String  # 对应Python版本的Market类型
     init_quantity::Union{Float64,Nothing}
 end
-StructTypes.StructType(::Type{StockPosition}) = StructTypes.Struct()
 
 function Base.show(io::IO, pos::StockPosition)
     print(
@@ -1048,7 +1029,6 @@ struct StockPositionChannel
     account_channel::String
     stock_info::Vector{StockPosition}
 end
-StructTypes.StructType(::Type{StockPositionChannel}) = StructTypes.Struct()
 
 function Base.show(io::IO, channel::StockPositionChannel)
     print(io, channel.account_channel, ": ", _count_label(length(channel.stock_info), "stock"))
@@ -1060,7 +1040,6 @@ Stock positions response
 struct StockPositionsResponse
     list::Vector{StockPositionChannel}
 end
-StructTypes.StructType(::Type{StockPositionsResponse}) = StructTypes.Struct()
 
 function Base.show(io::IO, resp::StockPositionsResponse)
     total = 0
@@ -1090,7 +1069,6 @@ Today execution response
 struct TodayExecutionResponse
     trades::Vector{Execution}
 end
-StructTypes.StructType(::Type{TodayExecutionResponse}) = StructTypes.Struct()
 
 """
 History execution response
@@ -1099,14 +1077,12 @@ struct ExecutionResponse
     trades::Vector{Execution}
     has_more::Bool
 end
-StructTypes.StructType(::Type{ExecutionResponse}) = StructTypes.Struct()
 
 """Paginated response from `GET /v3/trade/execution/all`."""
 struct AllExecutionsResponse
     has_more::Bool
     trades::Vector{Execution}
 end
-StructTypes.StructType(::Type{AllExecutionsResponse}) = StructTypes.Struct()
 
 # --- Request Option Structs ---
 

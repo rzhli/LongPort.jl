@@ -46,6 +46,9 @@ include("test_v0_9_3_release.jl")
 # v0.9.4 / immutable public handles with documented inner worker state
 include("test_v0_9_4_release.jl")
 
+# JSON3.jl -> JSON.jl 1.0 迁移：解析/构造行为回归
+include("test_json_migration.jl")
+
 @testset "Config defaults" begin
     direct_cfg = Settings("k", "s", "t", DateTime(2099, 1, 1))
     @test direct_cfg.http_url == LongBridge.Constant.DEFAULT_HTTP_URL_CN

@@ -1,6 +1,8 @@
 module ScreenerProtocol
 
-using JSON3, StructTypes
+using JSON
+using ..Utils: JSONObject
+import ..Utils: construct
 
 export ScreenerCondition,
     ScreenerRecommendStrategiesResponse,
@@ -11,10 +13,10 @@ export ScreenerCondition,
 
 # 上游 5 个端点均返回结构多变的 JSON——这里统一保留原始 JSON 对象，
 # 由调用方按需取字段。后续若 API 稳定可再细化类型。
-const RawJSON = Union{JSON3.Object,JSON3.Array,Dict{String,Any},Vector{Any},Nothing}
+const RawJSON = Union{JSON.Object{String,Any},Dict{String,Any},Vector{Any},Nothing}
 
 function _string_any_dict(x)
-    if x isa AbstractDict || x isa JSON3.Object
+    if x isa AbstractDict
         return Dict{String,Any}(String(k) => v for (k, v) in pairs(x))
     end
     return Dict{String,Any}()
@@ -57,9 +59,7 @@ ScreenerCondition(;
 struct ScreenerRecommendStrategiesResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ScreenerRecommendStrategiesResponse}) =
-    StructTypes.CustomStruct()
-StructTypes.construct(::Type{ScreenerRecommendStrategiesResponse}, obj) =
+construct(::Type{ScreenerRecommendStrategiesResponse}, obj) =
     ScreenerRecommendStrategiesResponse(obj)
 
 """
@@ -68,8 +68,7 @@ StructTypes.construct(::Type{ScreenerRecommendStrategiesResponse}, obj) =
 struct ScreenerUserStrategiesResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ScreenerUserStrategiesResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ScreenerUserStrategiesResponse}, obj) =
+construct(::Type{ScreenerUserStrategiesResponse}, obj) =
     ScreenerUserStrategiesResponse(obj)
 
 """
@@ -78,8 +77,7 @@ StructTypes.construct(::Type{ScreenerUserStrategiesResponse}, obj) =
 struct ScreenerStrategyResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ScreenerStrategyResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ScreenerStrategyResponse}, obj) = ScreenerStrategyResponse(obj)
+construct(::Type{ScreenerStrategyResponse}, obj) = ScreenerStrategyResponse(obj)
 
 """
 `screener_search` 的原始 JSON 响应包装（含分页结果）。
@@ -87,8 +85,7 @@ StructTypes.construct(::Type{ScreenerStrategyResponse}, obj) = ScreenerStrategyR
 struct ScreenerSearchResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ScreenerSearchResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ScreenerSearchResponse}, obj) = ScreenerSearchResponse(obj)
+construct(::Type{ScreenerSearchResponse}, obj) = ScreenerSearchResponse(obj)
 
 """
 `screener_indicators` 的原始 JSON 响应包装。
@@ -96,8 +93,7 @@ StructTypes.construct(::Type{ScreenerSearchResponse}, obj) = ScreenerSearchRespo
 struct ScreenerIndicatorsResponse
     data::RawJSON
 end
-StructTypes.StructType(::Type{ScreenerIndicatorsResponse}) = StructTypes.CustomStruct()
-StructTypes.construct(::Type{ScreenerIndicatorsResponse}, obj) =
+construct(::Type{ScreenerIndicatorsResponse}, obj) =
     ScreenerIndicatorsResponse(obj)
 
 end # module ScreenerProtocol
