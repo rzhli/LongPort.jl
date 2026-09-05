@@ -4,12 +4,9 @@ using JSON, HTTP
 
 export LongBridgeError, UnexpectedHttpResponse, @lperror, ApiResponse
 
+# `ApiResponse` 构造时已将 header 名归一化为小写，因此这里只需一次 O(1) 查询。
 function _header_value(headers::Dict{String,String}, name::String)
-    lname = lowercase(name)
-    for (key, value) in headers
-        lowercase(key) == lname && return value
-    end
-    ""
+    return get(headers, lowercase(name), "")
 end
 
 """An HTTP response that is not a standard LongBridge API envelope.

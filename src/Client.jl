@@ -21,9 +21,14 @@ const RETRIES = 3
 # 上游模型：客户端不主动发 ping，由服务端定期 ping 保活；
 # HTTP.jl 会自动回 PONG 并在收到任意帧时重置 read idle 计时器，
 # 因此 WS_HEARTBEAT_TIMEOUT 等价于上游的 HEARTBEAT_TIMEOUT。
+# 握手复用 HTTP_CLIENT（共享 transport 的连接池 / DNS 缓存 / TLS 配置，且无
+# cookie jar），而不是 HTTP.jl 的进程级默认 client；升级成功后连接归 WebSocket
+# 所有，既不占用连接池配额，也不会在 WS 关闭时关掉这个共享 client；
+# Client 上的 REST 超时（尤其是整体 request_timeout）不会泄漏到 WS 长连接。
 const WS_CONNECT_TIMEOUT = 5     # 上游 CONNECT_TIMEOUT
 const WS_HEARTBEAT_TIMEOUT = 120 # 上游 HEARTBEAT_TIMEOUT；read idle 窗口，服务端 ping 会刷新
 const WS_WRITE_TIMEOUT = 20      # HTTP.jl 中 write_idle_timeout 仅作用于握手阶段
+
 # WebSocket Client Constants (参考 Rust 实现)
 const REQUEST_TIMEOUT = 30.0  # seconds
 const QUERY_STRING_SIZE_HINT = 256
@@ -48,14 +53,15 @@ end
 # ==================== Signature Authentication ====================
 
 """
-sign(method, path, headers, params, body, config) -> Union{String, Nothing}
+sign(method, path, timestamp, params, body, config) -> Union{String, Nothing}
 
 Generate API signature for authentication. Returns `nothing` in OAuth mode (empty app_secret).
+`timestamp` 必须与请求实际发送的 `X-Timestamp` 头一致。
 """
 function sign(
     method::String,
     path::String,
-    headers::Dict{String,String},
+    timestamp::String,
     params::String,
     body::String,
     config::Config.Settings,
@@ -70,7 +76,6 @@ function sign(
     app_key = config.app_key
     app_secret = config.app_secret
     access_token = config.access_token
-    timestamp = headers["X-Timestamp"]
 
     # 构建signed_headers和signed_values
     if !isnothing(access_token) && !isempty(access_token)
@@ -158,6 +163,18 @@ function _check_dc_region(path::String, current::Symbol, required::Union{Symbol,
     ))
 end
 
+# 重试策略（对齐上游 Rust SDK）：
+# - 429（限流）无论方法都可重试：网关在限流时并未执行请求，重发没有副作用；
+#   HTTP.jl 内置策略只对幂等方法重试 429，会让 POST /v1/trade/order 直接失败。
+# - 其余情况返回 nothing，交回 HTTP.jl 内置策略：传输层瞬时错误与
+#   408/429/5xx 只对幂等方法（GET/HEAD/OPTIONS/TRACE/QUERY/PUT/DELETE）重试，
+#   因此下单这类 POST 永远不会被自动重发。
+# 退避由 HTTP.jl 负责：指数退避 + 抖动，并在 429/503 上遵循 Retry-After。
+function _retry_rate_limited(_attempt::Integer, err, _req, resp)
+    isnothing(err) && !isnothing(resp) && resp.status == 429 && return true
+    return nothing
+end
+
 # 通用 HTTP 请求函数
 function _http_request(
     config::Config.Settings,
@@ -169,71 +186,57 @@ function _http_request(
 )
     try
         query_string = _build_query_string(params)
-        body_str = isnothing(body) ? "" : JSON.json(body)
+        body_str = isnothing(body) ? nothing : JSON.json(body)
 
+        # HTTP.jl 的 header 规范形式是 Vector{Pair{String,String}}，直接构造可
+        # 省掉每次请求内部的 Dict -> Vector 归一化。
+        headers = Pair{String,String}[]
         if config.auth_mode == :oauth
             # OAuth mode: Bearer token, no HMAC signature
             token = oauth_access_token(config.oauth)
-            headers = Dict{String,String}(
-                "X-Api-Key" => config.app_key,
-                "Authorization" => "Bearer $token",
-                "Content-Type" => "application/json; charset=utf-8",
-            )
+            push!(headers, "X-Api-Key" => config.app_key)
+            push!(headers, "Authorization" => "Bearer $token")
+            push!(headers, "Content-Type" => "application/json; charset=utf-8")
             current_region = startswith(token, "us_") ? :us : :ap
         else
             # API Key mode: HMAC-SHA256 signature
             timestamp = string(floor(Int, time() * 1000))
-            headers = Dict{String,String}(
-                "X-Api-Key" => config.app_key,
-                "Authorization" => config.access_token,
-                "X-Timestamp" => timestamp,
-                "Content-Type" => "application/json; charset=utf-8",
-            )
+            push!(headers, "X-Api-Key" => config.app_key)
+            push!(headers, "Authorization" => config.access_token)
+            push!(headers, "X-Timestamp" => timestamp)
+            push!(headers, "Content-Type" => "application/json; charset=utf-8")
             current_region = Config.dc_region(config)
-            signature = sign(method, path, headers, query_string, body_str, config)
-            if !isnothing(signature)
-                headers["X-Api-Signature"] = signature
-            end
+            signature = sign(
+                method,
+                path,
+                timestamp,
+                query_string,
+                isnothing(body_str) ? "" : body_str,
+                config,
+            )
+            isnothing(signature) || push!(headers, "X-Api-Signature" => signature)
         end
 
         _check_dc_region(path, current_region, dc_region)
-        headers[DC_REGION_HEADER] = String(current_region)
-        config.enable_papertrading && (headers[PAPERTRADING_HEADER] = "true")
+        push!(headers, DC_REGION_HEADER => String(current_region))
+        config.enable_papertrading && push!(headers, PAPERTRADING_HEADER => "true")
         base_url = _regional_http_url(config, current_region)
+        # query string 已参与签名，必须原样上线：不要改用 HTTP.jl 的 `query=`
+        # 关键字，以免重新编码后与签名不一致。
         full_url = base_url * path * (isempty(query_string) ? "" : "?" * query_string)
 
-        if method == "GET"
-            return HTTP.get(
-                full_url;
-                headers,
-                client = HTTP_CLIENT,
-                retries = RETRIES,
-                status_exception = false,
-            )
-        elseif method == "DELETE"
-            # DELETE 可带 body（Alert/Sharelist 等接口需要）
-            kw =
-                isnothing(body) ?
-                (; headers, client = HTTP_CLIENT, retries = RETRIES, status_exception = false) :
-                (;
-                    headers,
-                    body = body_str,
-                    client = HTTP_CLIENT,
-                    retries = RETRIES,
-                    status_exception = false,
-                )
-            return HTTP.delete(full_url; kw...)
-        else
-            http_fn = method == "POST" ? HTTP.post : HTTP.put
-            return http_fn(
-                full_url;
-                headers,
-                body = body_str,
-                client = HTTP_CLIENT,
-                retries = RETRIES,
-                status_exception = false,
-            )
-        end
+        # 单一 HTTP.request 入口覆盖 GET/POST/PUT/DELETE；DELETE 带 body 时
+        # （Alert/Sharelist 等接口）同样走这里，无需分支。
+        return HTTP.request(
+            method,
+            full_url;
+            headers,
+            body = body_str,
+            client = HTTP_CLIENT,
+            retries = RETRIES,
+            retry_if = _retry_rate_limited,
+            status_exception = false,
+        )
     catch e
         @error "HTTP $method 请求异常" path=path exception=(e, catch_backtrace())
         rethrow(e)
@@ -449,6 +452,7 @@ function connect!(client::WSClient)
         try
             WebSockets.open(
                 full_url;
+                client = HTTP_CLIENT,
                 headers = ws_headers,
                 connect_timeout = WS_CONNECT_TIMEOUT,
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,
@@ -837,6 +841,7 @@ function reconnect!(client::WSClient)
             # 1. 物理连接
             WebSockets.open(
                 full_url;
+                client = HTTP_CLIENT,
                 headers = _routing_headers(client.config, region),
                 connect_timeout = WS_CONNECT_TIMEOUT,
                 read_idle_timeout = WS_HEARTBEAT_TIMEOUT,

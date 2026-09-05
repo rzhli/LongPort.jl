@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.9.6 (2026-09-05)
+
+### HTTP client (HTTP.jl 2.x)
+
+- The shared `HTTP.Client` now has an overall `request_timeout` (60 s) in addition to the phased connect/read-idle/write-idle timeouts. Previously a server that trickled bytes could hold a Context worker task indefinitely, because only the idle windows were bounded. HTTP.jl applies this deadline across retries and backoff sleeps, so it is set above the upstream Rust SDK's 30 s per-attempt timeout.
+- Requests send `User-Agent: openapi-sdk LongBridge.jl/<version>` instead of HTTP.jl's default `HTTP.jl/<version>`, keeping the upstream `openapi-sdk` identifier the Rust SDK uses.
+- `429 Too Many Requests` is now retried for every method, matching the upstream SDK: the gateway rejects rate-limited requests without executing them, so resending has no side effect. HTTP.jl's built-in policy only retried 429 for idempotent methods, which made a throttled `submit_order` fail immediately. Everything else still defers to the built-in policy, so non-idempotent requests are never resent after a transport error.
+- REST requests go through a single `HTTP.request(method, url; ...)` call instead of four per-verb branches, headers are built directly as HTTP.jl's canonical `Vector{Pair{String,String}}`, and `Client.sign` takes the timestamp explicitly instead of reading it back out of a header dictionary. The signed query string is still passed inline in the URL so it reaches the wire byte-for-byte.
+- WebSocket handshakes reuse the shared client (`WebSockets.open(...; client = HTTP_CLIENT)`), so quote/trade connections share its transport, DNS cache, and TLS configuration and inherit its disabled cookie jar. Passing the client explicitly keeps HTTP.jl from closing it when a socket closes, and the client's REST timeouts do not apply to the established long-lived connection.
+- OAuth and token-refresh calls share one `TOKEN_REQUEST_KW` configuration instead of repeating the client and four timeout keywords at each call site, and token exchanges let HTTP.jl form-encode their `NamedTuple` bodies (which also sets `Content-Type`) rather than calling `escapeuri` by hand. Timeout values are unchanged.
+- `ApiResponse` header lookups (`x-request-id`, `x-trace-id`) are a single dictionary lookup instead of a linear scan that lowercased every key.
+
+### Security
+
+- The OAuth callback server binds to `127.0.0.1` instead of `0.0.0.0`. The callback carries the authorization code and CSRF state, and the redirect URI is always `http://localhost:<port>/callback`, so the endpoint no longer needs to be reachable from the local network.
+
+### Tests
+
+- Added `test/test_http_client.jl`: shared-client configuration, the retry policy, signature stability, case-insensitive header lookup, the REST wire format over a loopback server (including signatures identical to the previous implementation, `DELETE` with a body, and the 429 retry), and a WebSocket handshake through the shared client.
+
 ## v0.9.5 (2026-09-05)
 
 ### JSON3.jl → JSON.jl 1.0 migration

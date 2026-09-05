@@ -6,7 +6,16 @@ This is an unofficial SDK, currently for personal use only. Some functions in th
 ## Release Notes
 See [NEWS.md](NEWS.md) for detailed release notes.
 
-Latest release: **v0.9.5** — migrated from JSON3.jl to JSON.jl 1.0.
+Latest release: **v0.9.6** — HTTP client tuned against the HTTP.jl 2.x API.
+
+### v0.9.6 migration notes
+
+- REST requests now carry an overall 60-second `request_timeout` on top of the existing connect / read-idle / write-idle timeouts, so a stalled-but-not-idle response can no longer block a Context worker indefinitely.
+- `429 Too Many Requests` is retried for every method (matching the upstream Rust SDK), including order submission, because the gateway rejects rate-limited requests without executing them. Transport failures still never resend a non-idempotent request.
+- Requests identify themselves as `openapi-sdk LongBridge.jl/<version>` via `User-Agent`.
+- WebSocket handshakes reuse the process-wide `HTTP.Client`, sharing its transport, DNS cache, and TLS configuration.
+- The OAuth callback server binds to `127.0.0.1` instead of `0.0.0.0`. If you relied on reaching it from another host, forward the port to loopback instead.
+- Internal API change: `LongBridge.Client.sign` takes the request timestamp as its third argument instead of a header `Dict`.
 
 ### v0.9.5 migration notes
 

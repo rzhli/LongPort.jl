@@ -6,7 +6,16 @@
 ## 更新日志
 详细更新说明请见 [NEWS.md](NEWS.md)。
 
-最新版本：**v0.9.5** —— 从 JSON3.jl 迁移到 JSON.jl 1.0。
+最新版本：**v0.9.6** —— 根据 HTTP.jl 2.x 源码优化 HTTP 层用法。
+
+### v0.9.6 迁移说明
+
+- REST 请求在原有 connect / 读写空转超时之外，新增 60 秒的整体 `request_timeout`；服务端“持续滘流但不空转”的响应不再能无限期占住 Context 的工作任务。
+- `429 Too Many Requests` 对所有方法（包括下单）都会重试，与上游 Rust SDK 一致：网关在限流时并未执行请求，重发没有副作用。传输层错误仍然不会重发非幂等请求。
+- 请求通过 `User-Agent` 自标识为 `openapi-sdk LongBridge.jl/<版本>`。
+- WebSocket 握手复用进程级 `HTTP.Client`，共享其 transport、DNS 缓存与 TLS 配置。
+- OAuth 回调服务器由 `0.0.0.0` 改为只监听 `127.0.0.1`。如果你之前依赖从其他主机访问它，请改用端口转发到回环地址。
+- 内部 API 变更：`LongBridge.Client.sign` 的第三个参数由 header `Dict` 改为请求时间戳。
 
 ### v0.9.5 迁移说明
 

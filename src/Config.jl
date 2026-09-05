@@ -5,7 +5,7 @@ using HTTP, JSON, Dates
 using ..Constant
 using ..Errors: LongBridgeError
 using ..OAuth: OAuthHandle, access_token as oauth_access_token
-using ..HttpClient: HTTP_CLIENT
+using ..HttpClient: HTTP_CLIENT, TOKEN_REQUEST_KW
 
 export Settings,
     config,
@@ -142,19 +142,9 @@ function from_toml(path::AbstractString)
     # Token过期三天前更新
     if now(Dates.UTC) > token_expire_time - Day(3)
         url = http_url * "/v1/token/refresh"
-        headers = Dict("Authorization" => "Bearer " * access_token, "X-API-KEY" => app_key)
-        query_param = Dict("expired_at" => raw_dt)
+        headers = ["Authorization" => "Bearer " * access_token, "X-API-KEY" => app_key]
         try
-            resp = HTTP.get(
-                url;
-                client = HTTP_CLIENT,
-                headers = headers,
-                query = query_param,
-                connect_timeout = 10,
-                request_timeout = 60,
-                response_header_timeout = 10,
-                read_idle_timeout = 30,
-            )
+            resp = HTTP.get(url; headers, query = ["expired_at" => raw_dt], TOKEN_REQUEST_KW...)
             data = JSON.parse(resp.body)
             if data.code == 0
                 access_token = data.data.token

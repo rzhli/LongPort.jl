@@ -4,7 +4,8 @@ using HTTP, JSON, Random
 using Base.Threads: ReentrantLock
 
 using ..Errors: LongBridgeError
-using ..HttpClient: HTTP_CLIENT, OAUTH_TIMEOUT
+# HTTP_CLIENT 仅作为进程级共享 client 的引用入口（实际请求经 TOKEN_REQUEST_KW 下发）。
+using ..HttpClient: HTTP_CLIENT, TOKEN_REQUEST_KW
 
 export OAuthToken,
     OAuthHandle,
@@ -25,6 +26,21 @@ const OAUTH_TOKEN_PATH = "/oauth2/token"
 const DEFAULT_CALLBACK_PORT = UInt16(60355)
 const DEFAULT_REDIRECT_URI = "http://localhost:60355/callback"
 const AUTH_TIMEOUT = 300.0  # 5 minutes
+
+# ==================== Token Endpoint ====================
+
+"""
+    _post_token(fields::NamedTuple) -> JSON 解析后的响应
+
+POST 到 OAuth token 端点。`fields` 直接作为请求体传给 HTTP.jl：NamedTuple
+会被自动做 application/x-www-form-urlencoded 编码，并在未显式指定时补上
+对应的 Content-Type。授权码/刷新令牌交换不幂等，HTTP.jl 默认不重试
+非幂等方法，正是此处需要的行为。
+"""
+function _post_token(fields::NamedTuple)
+    resp = HTTP.post(OAUTH_BASE_URL * OAUTH_TOKEN_PATH; body = fields, TOKEN_REQUEST_KW...)
+    return JSON.parse(resp.body)
+end
 
 function _token_dir()
     dir = get(ENV, "LONGBRIDGE_TOKEN_DIR", "")
@@ -190,25 +206,12 @@ function refresh_token!(handle::OAuthHandle)
 
     redirect_uri = "http://localhost:$(handle.callback_port)/callback"
 
-    resp = HTTP.post(
-        OAUTH_BASE_URL * OAUTH_TOKEN_PATH;
-        client = HTTP_CLIENT,
-        headers = ["Content-Type" => "application/x-www-form-urlencoded"],
-        connect_timeout = OAUTH_TIMEOUT.connect,
-        request_timeout = OAUTH_TIMEOUT.request,
-        response_header_timeout = OAUTH_TIMEOUT.response_header,
-        read_idle_timeout = OAUTH_TIMEOUT.read,
-        body = HTTP.URIs.escapeuri(
-            Dict(
-                "grant_type" => "refresh_token",
-                "refresh_token" => token.refresh_token,
-                "client_id" => handle.client_id,
-                "redirect_uri" => redirect_uri,
-            ),
-        ),
-    )
-
-    data = JSON.parse(resp.body)
+    data = _post_token((
+        grant_type = "refresh_token",
+        refresh_token = token.refresh_token,
+        client_id = handle.client_id,
+        redirect_uri = redirect_uri,
+    ))
 
     new_refresh = get(data, :refresh_token, token.refresh_token)
     new_token = OAuthToken(
@@ -241,14 +244,14 @@ function authorize!(handle::OAuthHandle, open_url_fn)
     auth_url = string(
         OAUTH_BASE_URL,
         OAUTH_AUTHORIZE_PATH,
-        "?client_id=",
-        HTTP.URIs.escapeuri(handle.client_id),
-        "&redirect_uri=",
-        HTTP.URIs.escapeuri(redirect_uri),
-        "&response_type=code",
-        "&state=",
-        HTTP.URIs.escapeuri(csrf_state),
-        "&scope=openapi",
+        "?",
+        HTTP.URIs.escapeuri((
+            client_id = handle.client_id,
+            redirect_uri = redirect_uri,
+            response_type = "code",
+            state = csrf_state,
+            scope = "openapi",
+        )),
     )
 
     # 单一结果通道，避免轮询多个 channel
@@ -256,7 +259,9 @@ function authorize!(handle::OAuthHandle, open_url_fn)
     result_ch = Channel{Tuple{Symbol,String}}(1)
 
     # Start callback server
-    server = HTTP.serve!("0.0.0.0", Int(handle.callback_port)) do request::HTTP.Request
+    # 回调里带的是授权码与 CSRF state，而 redirect_uri 固定为 localhost，
+    # 因此只监听回环地址，不向局域网暴露这个端点。
+    server = HTTP.serve!("127.0.0.1", Int(handle.callback_port)) do request::HTTP.Request
         uri = HTTP.URI(request.target)
         if startswith(uri.path, "/callback")
             params = HTTP.queryparams(uri)
@@ -317,25 +322,12 @@ function authorize!(handle::OAuthHandle, open_url_fn)
         auth_code = payload
 
         # Exchange code for token
-        resp = HTTP.post(
-            OAUTH_BASE_URL * OAUTH_TOKEN_PATH;
-            client = HTTP_CLIENT,
-            headers = ["Content-Type" => "application/x-www-form-urlencoded"],
-            connect_timeout = OAUTH_TIMEOUT.connect,
-            request_timeout = OAUTH_TIMEOUT.request,
-            response_header_timeout = OAUTH_TIMEOUT.response_header,
-            read_idle_timeout = OAUTH_TIMEOUT.read,
-            body = HTTP.URIs.escapeuri(
-                Dict(
-                    "grant_type" => "authorization_code",
-                    "code" => auth_code,
-                    "client_id" => handle.client_id,
-                    "redirect_uri" => redirect_uri,
-                ),
-            ),
-        )
-
-        data = JSON.parse(resp.body)
+        data = _post_token((
+            grant_type = "authorization_code",
+            code = auth_code,
+            client_id = handle.client_id,
+            redirect_uri = redirect_uri,
+        ))
 
         new_token = OAuthToken(
             handle.client_id,
